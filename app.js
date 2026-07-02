@@ -631,7 +631,7 @@ function renderDayDetail() {
   const status = dayStatus(selectedDetailDate, items);
   const events = meta.events.length ? `<p class="detail-events">${meta.events.join(" · ")}</p>` : '<p class="muted">Không có ngày lễ/vía đặc biệt.</p>';
   const schedules = items.length
-    ? items.map((item) => `<li><strong>${item.name}</strong><span>${segmentTimeRange(item, value)}${item.note ? ` · ${item.note}` : ""}</span></li>`).join("")
+    ? items.map((item) => `<li><strong>${item.name}</strong><span>${segmentTimeRange(item, selectedDetailDate)}${item.note ? ` · ${item.note}` : ""}</span></li>`).join("")
     : '<li><span class="muted">Chưa có ai đăng ký ngày này.</span></li>';
 
   dayDetail.innerHTML = `
@@ -860,7 +860,7 @@ function renderDailyOverview() {
     const meta = getLunarMeta(year, month + 1, day);
     const lunarInfo = `${lunarLabel(meta)}${meta.events.length ? ` · ${meta.events.join("; ")}` : ""}`;
     const schedules = items.length
-      ? items.map((item) => `<div><strong>${item.name}</strong>: ${segmentTimeRange(item, value)}${item.note ? ` · ${item.note}` : ""}</div>`).join("")
+      ? items.map((item) => `<div><strong>${item.name}</strong>: ${segmentTimeRange(item, selectedDetailDate)}${item.note ? ` · ${item.note}` : ""}</div>`).join("")
       : '<span class="muted">Chưa có lịch</span>';
 
     table.insertAdjacentHTML("beforeend", `
@@ -887,11 +887,11 @@ function buildZaloText() {
     const value = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const items = (grouped[value] || []).sort((a, b) => a.start.localeCompare(b.start));
     if (!items.length) continue;
-    const hasConflict = items.some((item) => daySpecificConflicts(item, value).length);
+    const hasConflict = items.some((item) => daySpecificConflicts(item, selectedDetailDate).length);
     if (items.length >= maxPerDay) busyDays.push(formatDate(value));
     if (hasConflict) conflictDays.push(formatDate(value));
     lines.push(`${formatDate(value)}: ${items.length} lượt${items.length >= maxPerDay ? " - ĐÔNG" : ""}${hasConflict ? " - CÓ TRÙNG" : ""}`);
-    items.forEach((item) => lines.push(`- ${item.name}: ${segmentTimeRange(item, value)}${item.note ? ` (${item.note})` : ""}`));
+    items.forEach((item) => lines.push(`- ${item.name}: ${segmentTimeRange(item, selectedDetailDate)}${item.note ? ` (${item.note})` : ""}`));
     lines.push("");
   }
 
@@ -943,6 +943,7 @@ dayDetail?.addEventListener("click", (event) => {
 });
 
 render();
+
 
 
 
