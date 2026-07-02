@@ -1,0 +1,120 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lịch thăm thầy</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Sắp lịch theo tháng</p>
+        <h1>Lịch đăng ký thăm thầy</h1>
+        <p class="subtitle">Đăng ký theo khung giờ, phát hiện trùng lịch, tránh ngày quá đông.</p>
+      </div>
+      <div class="hero-card">
+        <span id="totalRegistered">0</span>
+        <small>lượt đăng ký tháng này</small>
+      </div>
+    </section>
+
+    <section class="toolbar card">
+      <button id="prevMonth" type="button">← Tháng trước</button>
+      <h2 id="monthLabel"></h2>
+      <button id="nextMonth" type="button">Tháng sau →</button>
+    </section>
+
+    <section class="grid-layout">
+      <div class="card calendar-card">
+        <div class="weekdays">
+          <span>T2</span><span>T3</span><span>T4</span><span>T5</span><span>T6</span><span>T7</span><span>CN</span>
+        </div>
+        <div id="calendar" class="calendar"></div>
+      </div>
+
+      <aside class="stack">
+        <form id="registerForm" class="card form-card">
+          <h3>Đăng ký lịch</h3>
+          <label>Họ tên
+            <input id="nameInput" type="text" placeholder="VD: Nguyễn Văn A" required />
+          </label>
+          <div class="date-time-grid">
+            <label>Từ ngày
+              <input id="startDateInput" type="date" required />
+            </label>
+            <label>Từ giờ
+              <div class="time-picker"><select id="startHourSelect" aria-label="Chọn giờ bắt đầu"></select><span class="time-separator">:</span><select id="startMinuteSelect" aria-label="Chọn phút bắt đầu"></select></div>
+            </label>
+            <label>Đến ngày
+              <input id="endDateInput" type="date" required />
+            </label>
+            <label>Đến giờ
+              <div class="time-picker"><select id="endHourSelect" aria-label="Chọn giờ kết thúc"></select><span class="time-separator">:</span><select id="endMinuteSelect" aria-label="Chọn phút kết thúc"></select></div>
+            </label>
+          </div>
+          <label>Ghi chú
+            <textarea id="noteInput" rows="3" placeholder="VD: đi cùng gia đình, đến buổi chiều..."></textarea>
+          </label>
+          <div id="conflictBox" class="notice"></div>
+          <p id="syncStatus" class="sync-status">Sẵn sàng đồng bộ Sheet.</p>
+          <button type="submit">Lưu đăng ký</button>
+        </form>
+        <div class="card">
+          <h3>Danh sách cần theo dõi</h3>
+          <div class="inline-form">
+            <input id="personInput" type="text" placeholder="Tên người cần hỏi lịch" />
+            <button id="addPerson" type="button">Thêm</button>
+          </div>
+          <p class="hint">Dùng để biết ai chưa đăng ký.</p>
+        </div>
+      </aside>
+    </section>
+
+    <section class="card overview-card">
+      <div class="section-head">
+        <div>
+          <h3>Bảng tổng hợp theo ngày</h3>
+          <p class="hint">Dùng để xem ngày đông/trùng và copy nhanh vào Zalo.</p>
+        </div>
+      </div>
+      <div id="dailyOverview" class="daily-overview"></div>
+    </section>    <section class="summary-grid">
+      <div class="card">
+        <h3>Gợi ý cân bằng</h3>
+        <div id="balanceTips" class="tips"></div>
+      </div>
+      <div class="card">
+        <h3>Đã đăng ký</h3>
+        <div id="registeredList" class="people-list"></div>
+      </div>
+      <div class="card">
+        <h3>Chưa đăng ký</h3>
+        <div id="missingList" class="people-list"></div>
+      </div>
+    </section>
+    <div id="dayOverlay" class="day-overlay" aria-hidden="true">
+    <div id="dayDetail" class="day-modal" role="dialog" aria-modal="true"></div>
+  </div>
+</main>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
