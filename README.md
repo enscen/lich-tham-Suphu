@@ -1,6 +1,6 @@
-﻿# Lịch thăm thầy
+﻿# Lịch thăm Sư phụ
 
-App web tĩnh để đăng ký lịch đến thăm thầy theo khung giờ.
+App web tĩnh để đăng ký lịch đến thăm Sư phụ theo khung giờ.
 
 ## Chạy app
 
@@ -32,3 +32,4 @@ Mở `index.html` bằng trình duyệt.
 ## Zalo group
 
 Zalo group không có API bot mở tiện như Telegram/Discord. Cách thực tế: gửi link app trong group, hoặc copy thông tin lịch từ app để nhắn vào nhóm. Dữ liệu chính nên nằm trong Google Sheet.
+
