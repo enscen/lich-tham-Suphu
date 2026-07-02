@@ -884,7 +884,7 @@ function renderDailyOverview() {
     const meta = getLunarMeta(year, month + 1, day);
     const lunarInfo = `${lunarLabel(meta)}${meta.events.length ? ` · ${meta.events.join("; ")}` : ""}`;
     const schedules = items.length
-      ? items.map((item) => `<div><strong>${item.name}</strong>: ${segmentTimeRange(item, selectedDetailDate)}${item.note ? ` · ${item.note}` : ""}</div>`).join("")
+      ? items.map((item) => `<div><strong>${item.name}</strong>: ${segmentTimeRange(item, value)}${item.note ? ` · ${item.note}` : ""}</div>`).join("")
       : '<span class="muted">Chưa có lịch</span>';
 
     table.insertAdjacentHTML("beforeend", `
@@ -903,7 +903,7 @@ function buildZaloText() {
   const year = visibleDate.getFullYear();
   const month = visibleDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const lines = [`LỊCH THĂM THẦY - THÁNG ${month + 1}/${year}`, ""];
+  const lines = [`LỊCH THĂM SƯ PHỤ - THÁNG ${month + 1}/${year}`, ""];
   const busyDays = [];
   const conflictDays = [];
 
@@ -915,7 +915,7 @@ function buildZaloText() {
     if (items.length >= maxPerDay) busyDays.push(formatDate(value));
     if (hasConflict) conflictDays.push(formatDate(value));
     lines.push(`${formatDate(value)}: ${items.length} lượt${items.length >= maxPerDay ? " - ĐÔNG" : ""}${hasConflict ? " - CÓ TRÙNG" : ""}`);
-    items.forEach((item) => lines.push(`- ${item.name}: ${segmentTimeRange(item, selectedDetailDate)}${item.note ? ` (${item.note})` : ""}`));
+    items.forEach((item) => lines.push(`- ${item.name}: ${segmentTimeRange(item, value)}${item.note ? ` (${item.note})` : ""}`));
     lines.push("");
   }
 
@@ -967,6 +967,7 @@ dayDetail?.addEventListener("click", (event) => {
 });
 
 render();
+
 
 
 
