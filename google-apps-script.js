@@ -6,6 +6,7 @@ function setup() {
   const reg = ss.getSheetByName(SHEET_REG) || ss.insertSheet(SHEET_REG);
   const people = ss.getSheetByName(SHEET_PEOPLE) || ss.insertSheet(SHEET_PEOPLE);
   ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
+  setRegistrationTextFormat_(reg);
   ensureHeaders_(people, ["name"]);
 }
 
@@ -15,6 +16,7 @@ function doGet() {
     const reg = ss.getSheetByName(SHEET_REG) || ss.insertSheet(SHEET_REG);
     const people = ss.getSheetByName(SHEET_PEOPLE) || ss.insertSheet(SHEET_PEOPLE);
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
+  setRegistrationTextFormat_(reg);
     ensureHeaders_(people, ["name"]);
 
     const registrations = reg.getDataRange().getValues().slice(1).filter(row => row[0]).map(row => ({
@@ -38,13 +40,14 @@ function doPost(e) {
     const reg = ss.getSheetByName(SHEET_REG) || ss.insertSheet(SHEET_REG);
     const people = ss.getSheetByName(SHEET_PEOPLE) || ss.insertSheet(SHEET_PEOPLE);
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
+  setRegistrationTextFormat_(reg);
     ensureHeaders_(people, ["name"]);
 
     if (body.action === "add" && body.item) {
       const item = body.item;
       const ids = getIds_(reg);
       if (!ids.has(String(item.id))) {
-        reg.appendRow([item.id, item.name, item.start, item.end, item.note || ""]);
+        appendRegistration_(reg, item);
       }
     }
 
@@ -59,7 +62,7 @@ function doPost(e) {
     if (body.action === "overwriteAll" && Array.isArray(body.registrations)) {
       reg.clear();
       reg.appendRow(["id", "name", "start", "end", "note"]);
-      body.registrations.forEach(item => reg.appendRow([item.id, item.name, item.start, item.end, item.note || ""]));
+      body.registrations.forEach(item => appendRegistration_(reg, item));
     }
 
     if (body.action === "people" && Array.isArray(body.people)) {
@@ -70,6 +73,19 @@ function doPost(e) {
   } catch (error) {
     return json({ ok: false, error: String(error) });
   }
+}
+
+function normalizeSchedule_(value) {
+  return String(value || "").replace("T", " ");
+}
+
+function setRegistrationTextFormat_(sheet) {
+  sheet.getRange("C:D").setNumberFormat("@");
+}
+
+function appendRegistration_(sheet, item) {
+  setRegistrationTextFormat_(sheet);
+  sheet.appendRow([String(item.id || ""), String(item.name || ""), normalizeSchedule_(item.start), normalizeSchedule_(item.end), String(item.note || "")]);
 }
 
 function ensureHeaders_(sheet, headers) {
@@ -103,4 +119,5 @@ function rewritePeople_(sheet, people) {
 function json(data) {
   return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
 }
+
 

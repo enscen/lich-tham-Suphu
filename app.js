@@ -137,8 +137,32 @@ function dateKey(date) {
   return toDatetimeValue(date).slice(0, 10);
 }
 
+function parseScheduleDate(value) {
+  if (value instanceof Date) return value;
+  const raw = String(value || "").trim();
+  if (!raw) return new Date(NaN);
+  const normalized = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/) ;
+  if (normalized) {
+    return new Date(Number(normalized[1]), Number(normalized[2]) - 1, Number(normalized[3]), Number(normalized[4]), Number(normalized[5]), 0, 0);
+  }
+  return new Date(raw);
+}
+
+function normalizeScheduleValue(value) {
+  const date = parseScheduleDate(value);
+  if (Number.isNaN(date.getTime())) return String(value || "");
+  return toDatetimeValue(date);
+}
+
+function normalizeRegistration(item) {
+  return {
+    ...item,
+    start: normalizeScheduleValue(item.start),
+    end: normalizeScheduleValue(item.end),
+  };
+}
 function formatDateTime(value) {
-  const date = new Date(value);
+  const date = parseScheduleDate(value);
   return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
@@ -509,7 +533,7 @@ function renderCalendar() {
 }
 
 function duplicateDayKey(item) {
-  return `${item.name.trim().toLowerCase()}|${dateKey(new Date(item.start))}`;
+  return `${item.name.trim().toLowerCase()}|${dateKey(parseScheduleDate(item.start))}`;
 }
 
 function duplicateIdsForItem(item) {
@@ -657,7 +681,7 @@ function mergeById(localItems, cloudItems) {
   const map = new Map();
   localItems.forEach((item) => item?.id && map.set(item.id, item));
   cloudItems.forEach((item) => item?.id && map.set(item.id, item));
-  return [...map.values()].sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")));
+  return [...map.values()].map(normalizeRegistration).sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")));
 }
 
 async function syncFromCloud() {
@@ -710,7 +734,7 @@ async function pushToCloud(payload) {
 }
 
 async function addRegistration(item) {
-  state.registrations.push(item);
+  state.registrations.push(normalizeRegistration(item));
   if (!state.people.some((person) => person.toLowerCase() === item.name.toLowerCase())) state.people.push(item.name);
   saveState();
   render();
@@ -795,7 +819,7 @@ function dayStatus(date, items) {
 }
 
 function timeOnly(value) {
-  const date = new Date(value);
+  const date = parseScheduleDate(value);
   if (date.getHours() === 0 && date.getMinutes() === 0 && value.endsWith("T00:00")) return "24:00";
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
@@ -810,8 +834,8 @@ function dayBounds(dateValue) {
 
 function daySegmentForItem(item, dateValue) {
   const bounds = dayBounds(dateValue);
-  const itemStart = new Date(item.start);
-  const itemEnd = new Date(item.end);
+  const itemStart = parseScheduleDate(item.start);
+  const itemEnd = parseScheduleDate(item.end);
   const segmentStart = itemStart > bounds.start ? itemStart : bounds.start;
   const segmentEnd = itemEnd < bounds.end ? itemEnd : bounds.end;
   if (segmentStart >= segmentEnd) return null;
@@ -943,6 +967,7 @@ dayDetail?.addEventListener("click", (event) => {
 });
 
 render();
+
 
 
 
