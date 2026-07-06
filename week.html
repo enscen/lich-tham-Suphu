@@ -1,0 +1,34 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lịch tuần thăm Sư phụ</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="week-page">
+  <main class="week-shell">
+    <section class="week-hero">
+      <div>
+        <p class="eyebrow">Xem theo tuần</p>
+        <h1>Lịch tuần thăm Sư phụ</h1>
+        <p class="subtitle">Dễ xem trên điện thoại: từng ngày, từng khung giờ.</p>
+      </div>
+      <a class="ghost-link" href="index.html">Xem tháng</a>
+    </section>
+
+    <section class="week-toolbar card">
+      <button id="prevWeek" type="button">← Tuần trước</button>
+      <div>
+        <h2 id="weekLabel"></h2>
+        <p id="weekStatus" class="hint">Đang tải dữ liệu...</p>
+      </div>
+      <button id="nextWeek" type="button">Tuần sau →</button>
+    </section>
+
+    <section id="weekList" class="week-list"></section>
+  </main>
+
+  <script src="week.js"></script>
+</body>
+</html>
