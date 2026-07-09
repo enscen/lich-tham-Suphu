@@ -789,24 +789,7 @@ $("#registerForm").addEventListener("submit", async (event) => {
   validateRange();
 });
 
-$("#addPerson").addEventListener("click", async () => {
-  const name = normalizeName(personInput.value);
-  if (!name) return;
-  if (!state.people.some((person) => person.toLowerCase() === name.toLowerCase())) {
-    state.people.push(name);
-    saveState();
-    await pushToCloud({ action: "people", people: state.people });
-  }
-  personInput.value = "";
-  render();
-});
 
-personInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    $("#addPerson").click();
-  }
-});
 
 startDateInput.addEventListener("change", () => {
   if (!endDateInput.value || endDateInput.value < startDateInput.value) endDateInput.value = startDateInput.value;
