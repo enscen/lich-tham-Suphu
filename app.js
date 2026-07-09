@@ -173,7 +173,7 @@ function formatDate(value) {
 
 function formatDateWithLunar(value) {
   const [year, month, day] = value.split("-").map(Number);
-  const meta = lunarInfo(day, month - 1, year);
+  const meta = getLunarMeta(year, month, day);
   const lunar = lunarLabel(meta);
   return `${pad2(day)}/${pad2(month)}/${year}${lunar ? ` (${lunar})` : ""}`;
 }
@@ -1027,6 +1027,7 @@ dayDetail?.addEventListener("click", (event) => {
 });
 
 render();
+
 
 
 
