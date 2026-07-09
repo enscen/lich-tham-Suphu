@@ -167,8 +167,10 @@ function formatDateTime(value) {
 }
 
 function formatDate(value) {
-  const [year, month, day] = value.split("-");
-  return `${day}/${month}/${year}`;
+  const [year, month, day] = value.split("-").map(Number);
+  const meta = lunarInfo(day, month - 1, year);
+  const lunar = lunarLabel(meta);
+  return `${pad2(day)}/${pad2(month)}/${year}${lunar ? ` (${lunar})` : ""}`;
 }
 
 function getMonthKey(date = visibleDate) {
