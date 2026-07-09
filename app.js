@@ -539,9 +539,9 @@ function duplicateDayKey(item) {
 function duplicateIdsForItem(item) {
   const key = duplicateDayKey(item);
   const same = state.registrations
-    .filter((registration) => duplicateDayKey(registration) === key)
+    .filter((registration) => registration.id !== item.id && duplicateDayKey(registration) === key && rangesOverlap(item.start, item.end, registration.start, registration.end))
     .sort((a, b) => String(b.start || "").localeCompare(String(a.start || "")) || String(b.id || "").localeCompare(String(a.id || "")));
-  return same.slice(1).map((registration) => registration.id);
+  return same.map((registration) => registration.id);
 }
 
 async function deleteDuplicateRegistrations(item) {
@@ -1018,6 +1018,7 @@ dayDetail?.addEventListener("click", (event) => {
 });
 
 render();
+
 
 
 
