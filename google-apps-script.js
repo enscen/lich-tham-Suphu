@@ -1,13 +1,16 @@
 const SHEET_REG = "Registrations";
 const SHEET_PEOPLE = "People";
+const SHEET_DELETED = "Deleted";
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const reg = ss.getSheetByName(SHEET_REG) || ss.insertSheet(SHEET_REG);
   const people = ss.getSheetByName(SHEET_PEOPLE) || ss.insertSheet(SHEET_PEOPLE);
+  const deleted = ss.getSheetByName(SHEET_DELETED) || ss.insertSheet(SHEET_DELETED);
   ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
   setRegistrationTextFormat_(reg);
   ensureHeaders_(people, ["name"]);
+  ensureHeaders_(deleted, ["deletedAt", "action", "id", "name", "start", "end", "note"]);
 }
 
 function doGet() {
@@ -15,9 +18,11 @@ function doGet() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const reg = ss.getSheetByName(SHEET_REG) || ss.insertSheet(SHEET_REG);
     const people = ss.getSheetByName(SHEET_PEOPLE) || ss.insertSheet(SHEET_PEOPLE);
+    const deleted = ss.getSheetByName(SHEET_DELETED) || ss.insertSheet(SHEET_DELETED);
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
-  setRegistrationTextFormat_(reg);
+    setRegistrationTextFormat_(reg);
     ensureHeaders_(people, ["name"]);
+    ensureHeaders_(deleted, ["deletedAt", "action", "id", "name", "start", "end", "note"]);
     syncPeopleFromRegistrations_(reg, people);
 
     const registrations = reg.getDataRange().getValues().slice(1).filter(row => row[0]).map(row => ({
@@ -40,9 +45,11 @@ function doPost(e) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const reg = ss.getSheetByName(SHEET_REG) || ss.insertSheet(SHEET_REG);
     const people = ss.getSheetByName(SHEET_PEOPLE) || ss.insertSheet(SHEET_PEOPLE);
+    const deleted = ss.getSheetByName(SHEET_DELETED) || ss.insertSheet(SHEET_DELETED);
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
-  setRegistrationTextFormat_(reg);
+    setRegistrationTextFormat_(reg);
     ensureHeaders_(people, ["name"]);
+    ensureHeaders_(deleted, ["deletedAt", "action", "id", "name", "start", "end", "note"]);
 
     if (body.action === "add" && body.item) {
       const item = body.item;
@@ -54,16 +61,17 @@ function doPost(e) {
     }
 
     if (body.action === "del" && body.id) {
-      deleteIds_(reg, [String(body.id)]);
+      deleteIds_(reg, [String(body.id)], deleted, "del");
       syncPeopleFromRegistrations_(reg, people);
     }
 
     if (body.action === "delMany" && Array.isArray(body.ids)) {
-      deleteIds_(reg, body.ids.map(String));
+      deleteIds_(reg, body.ids.map(String), deleted, "delMany");
       syncPeopleFromRegistrations_(reg, people);
     }
 
     if (body.action === "overwriteAll" && Array.isArray(body.registrations)) {
+      logDeletedRows_(deleted, reg.getDataRange().getValues().slice(1), "overwriteAll");
       reg.clear();
       reg.appendRow(["id", "name", "start", "end", "note"]);
       body.registrations.forEach(item => appendRegistration_(reg, item));
@@ -107,12 +115,17 @@ function getIds_(sheet) {
   return new Set(sheet.getDataRange().getValues().slice(1).map(row => String(row[0] || "")).filter(Boolean));
 }
 
-function deleteIds_(sheet, ids) {
+function deleteIds_(sheet, ids, deleted, action) {
   const idSet = new Set(ids);
   const values = sheet.getDataRange().getValues();
+  logDeletedRows_(deleted, values.slice(1).filter(row => idSet.has(String(row[0]))), action);
   for (let row = values.length - 1; row >= 1; row -= 1) {
     if (idSet.has(String(values[row][0]))) sheet.deleteRow(row + 1);
   }
+}
+
+function logDeletedRows_(sheet, rows, action) {
+  rows.filter(row => row[0]).forEach(row => sheet.appendRow([new Date(), action, row[0], row[1], row[2], row[3], row[4]]));
 }
 
 function rewritePeople_(sheet, people) {
@@ -135,5 +148,3 @@ function syncPeopleFromRegistrations_(reg, people) {
 function json(data) {
   return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
 }
-
-
