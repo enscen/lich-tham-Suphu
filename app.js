@@ -24,9 +24,6 @@ const endMinuteSelect = $("#endMinuteSelect");
 const nameInput = $("#nameInput");
 const noteInput = $("#noteInput");
 const personInput = $("#personInput");
-const registeredList = $("#registeredList");
-const missingList = $("#missingList");
-const balanceTips = $("#balanceTips");
 const totalRegistered = $("#totalRegistered");
 const conflictBox = $("#conflictBox");
 const syncStatus = $("#syncStatus");
@@ -565,79 +562,10 @@ async function deleteDuplicateRegistrations(item) {
   render();
 }
 function renderLists() {
-  const items = registrationsInMonth().sort((a, b) => a.start.localeCompare(b.start));
-  totalRegistered.textContent = String(items.length);
-  registeredList.innerHTML = "";
-
-  if (!items.length) {
-    registeredList.innerHTML = '<p class="empty">Chưa ai đăng ký tháng này.</p>';
-  } else {
-    items.forEach((item) => {
-      const conflicts = findConflicts(item.start, item.end, item.id);
-      const duplicateIds = duplicateIdsForItem(item);
-      const row = document.createElement("div");
-      row.className = "person-row";
-      row.innerHTML = `
-        <div><strong>${item.name}</strong><small>${formatDateTime(item.start)} → ${formatDateTime(item.end)}${item.note ? ` · ${item.note}` : ""}${conflicts.length ? ` · Trùng ${conflicts.length} lịch` : ""}${duplicateIds.length ? ` · Trùng người/ngày ${duplicateIds.length}` : ""}</small></div>
-        <div class="row-actions">
-          ${duplicateIds.length ? `<button class="ghost dedupe" type="button">Xóa trùng</button>` : ""}
-          <button class="danger delete-one" type="button">Xóa</button>
-        </div>
-      `;
-      row.querySelector(".delete-one").addEventListener("click", () => deleteRegistration(item.id));
-      row.querySelector(".dedupe")?.addEventListener("click", () => deleteDuplicateRegistrations(item));
-      registeredList.appendChild(row);
-    });
-  }
-
-  const registeredNames = new Set(state.registrations.map((item) => item.name.toLowerCase()));
-  const missingPeople = state.people.filter((name) => !registeredNames.has(name.toLowerCase()));
-  missingList.innerHTML = "";
-
-  if (!state.people.length) {
-    missingList.innerHTML = '<p class="empty">Chưa có danh sách theo dõi.</p>';
-    return;
-  }
-  if (!missingPeople.length) {
-    missingList.innerHTML = '<p class="empty">Tất cả trong danh sách đã đăng ký.</p>';
-    return;
-  }
-
-  missingPeople.forEach((name) => {
-    const row = document.createElement("div");
-    row.className = "person-row";
-    row.innerHTML = `<div><strong>${name}</strong><small>Chưa chọn lịch</small></div><button class="danger" type="button">Bỏ</button>`;
-    row.querySelector("button").addEventListener("click", () => {
-      state.people = state.people.filter((person) => person !== name);
-      saveState();
-      render();
-    });
-    missingList.appendChild(row);
-  });
+  totalRegistered.textContent = String(registrationsInMonth().length);
 }
 
-function renderTips() {
-  const grouped = registrationsByDate();
-  const entries = Object.entries(grouped).sort((a, b) => b[1].length - a[1].length);
-  const busy = entries.filter(([, items]) => items.length >= maxPerDay);
-  const light = entries.filter(([, items]) => items.length > 0 && items.length <= 2);
-  const conflictCount = registrationsInMonth().filter((item) => findConflicts(item.start, item.end, item.id).length).length;
-  balanceTips.innerHTML = "";
-
-  const tips = [];
-  if (conflictCount) tips.push({ badge: "Trùng", cls: "bad", text: `${conflictCount} lịch đang bị chồng giờ.` });
-  if (busy.length) tips.push({ badge: "Đông", cls: "bad", text: `${busy.map(([date]) => formatDate(date)).join(", ")} đã từ ${maxPerDay} lượt trở lên.` });
-  if (light.length) tips.push({ badge: "Còn nhẹ", cls: "good", text: `${light.slice(0, 4).map(([date]) => formatDate(date)).join(", ")} đang ít người.` });
-  if (!entries.length) tips.push({ badge: "Trống", cls: "warn", text: "Tháng này chưa có lịch." });
-  if (entries.length && !busy.length && !conflictCount) tips.push({ badge: "Ổn", cls: "good", text: "Chưa có ngày quá đông hoặc lịch trùng giờ." });
-
-  tips.forEach((tip) => {
-    const item = document.createElement("div");
-    item.className = "tip";
-    item.innerHTML = `<div><strong>${tip.text}</strong><small>Ngưỡng đông: ${maxPerDay} lượt/ngày.</small></div><span class="badge ${tip.cls}">${tip.badge}</span>`;
-    balanceTips.appendChild(item);
-  });
-}
+function renderTips() {}
 
 function openDayDetail() {
   if (!dayOverlay) return;
