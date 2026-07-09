@@ -895,13 +895,14 @@ function renderDailyOverview() {
     week.total += items.length;
     if (items.length >= maxPerDay) week.hasBusyDay = true;
     if (items.some((item) => daySpecificConflicts(item, value).length)) week.hasConflict = true;
-    if (items.length) {
-      week.days.push({
-        date: value,
-        items,
-        schedules: items.map((item) => `<div><strong>${item.name}</strong>: ${segmentTimeRange(item, value)}${item.note ? ` · ${item.note}` : ""}</div>`).join(""),
-      });
-    }
+    week.days.push({
+      date: value,
+      items,
+      weekday: ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][(localDate(year, month, day).getDay() + 6) % 7],
+      schedules: items.length
+        ? items.map((item) => `<div><strong>${item.name}</strong>: ${segmentTimeRange(item, value)}${item.note ? ` · ${item.note}` : ""}</div>`).join("")
+        : '<span class="muted">Chưa có ai đăng ký.</span>',
+    });
   }
 
   const table = document.createElement("div");
@@ -920,7 +921,7 @@ function renderDailyOverview() {
       : week.total <= 2 ? { label: "Ít", cls: "good" }
       : { label: "Ổn", cls: "good" };
     const schedules = week.days.length
-      ? week.days.map((day) => `<div class="week-summary-day"><strong>${formatDate(day.date)}</strong>${day.schedules}</div>`).join("")
+      ? week.days.map((day) => `<div class="week-summary-day"><strong>${day.weekday} · ${formatDate(day.date)}</strong>${day.schedules}</div>`).join("")
       : '<span class="muted">Chưa có lịch trong tuần.</span>';
 
     table.insertAdjacentHTML("beforeend", `
@@ -1008,6 +1009,7 @@ dayDetail?.addEventListener("click", (event) => {
 });
 
 render();
+
 
 
 
