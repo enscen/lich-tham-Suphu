@@ -241,3 +241,9 @@ h3 { margin: 0 0 14px; }
 .week-actions { display: inline-flex; justify-content: flex-end; margin-top: 0; }
 .week-actions button { font-size: 12px; padding: 5px 8px; }
 @media (max-width: 720px) { .week-schedule-row { grid-template-columns: 1fr auto; align-items: center; } }
+.day-mini-table { display: grid; grid-template-columns: minmax(120px, 1.1fr) 110px minmax(160px, 1.6fr) auto; border: 1px solid var(--line); border-bottom: 0; }
+.day-mini-table > div { padding: 6px 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.day-mini-table > div:nth-child(4n) { border-right: 0; }
+.day-mini-table .week-actions { justify-content: center; }
+.day-mini-table .week-actions button { padding: 4px 8px; }
+@media (max-width: 720px) { .day-mini-table { grid-template-columns: 1fr; } .day-mini-table > div { border-right: 0; } .day-mini-table > div:nth-child(4n-3) { font-weight: 900; background: var(--soft); } }
