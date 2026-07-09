@@ -224,3 +224,6 @@ h3 { margin: 0 0 14px; }
 }
 .overview-week-row { grid-column: 1 / -1; background: #8d4b25 !important; color: white; font-weight: 900; letter-spacing: .01em; border-right: 0 !important; }
 @media (max-width: 720px) { .overview-week-row { border-radius: 14px; margin-top: 12px; } }
+.weekly-overview-table .week-summary-day { display: grid; gap: 4px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.weekly-overview-table .week-summary-day:last-child { border-bottom: 0; }
+.weekly-overview-table .week-summary-day > strong { color: var(--brand); }

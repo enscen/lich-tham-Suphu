@@ -881,42 +881,58 @@ function renderDailyOverview() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   overview.innerHTML = "";
 
+  const weeks = [];
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const label = weekLabelForMonthDay(year, month, day);
+    let week = weeks.find((item) => item.label === label);
+    if (!week) {
+      week = { label, total: 0, days: [], hasConflict: false, hasBusyDay: false };
+      weeks.push(week);
+    }
+
+    const value = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const items = (grouped[value] || []).sort((a, b) => a.start.localeCompare(b.start));
+    week.total += items.length;
+    if (items.length >= maxPerDay) week.hasBusyDay = true;
+    if (items.some((item) => daySpecificConflicts(item, value).length)) week.hasConflict = true;
+    if (items.length) {
+      week.days.push({
+        date: value,
+        items,
+        schedules: items.map((item) => `<div><strong>${item.name}</strong>: ${segmentTimeRange(item, value)}${item.note ? ` · ${item.note}` : ""}</div>`).join(""),
+      });
+    }
+  }
+
   const table = document.createElement("div");
-  table.className = "overview-table";
+  table.className = "overview-table weekly-overview-table";
   table.innerHTML = `
-    <div class="overview-head">Ngày</div>
+    <div class="overview-head">Tuần</div>
     <div class="overview-head">Lượt</div>
-    <div class="overview-head">Lịch</div>
+    <div class="overview-head">Lịch trong tuần</div>
     <div class="overview-head">Trạng thái</div>
   `;
 
-  let lastWeekLabel = "";
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const weekLabel = weekLabelForMonthDay(year, month, day);
-    if (weekLabel !== lastWeekLabel) {
-      table.insertAdjacentHTML("beforeend", `<div class="overview-week-row">${weekLabel}</div>`);
-      lastWeekLabel = weekLabel;
-    }
-    const value = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const items = (grouped[value] || []).sort((a, b) => a.start.localeCompare(b.start));
-    const status = dayStatus(value, items);
-    const meta = getLunarMeta(year, month + 1, day);
-    const lunarInfo = `${lunarLabel(meta)}${meta.events.length ? ` · ${meta.events.join("; ")}` : ""}`;
-    const schedules = items.length
-      ? items.map((item) => `<div><strong>${item.name}</strong>: ${segmentTimeRange(item, value)}${item.note ? ` · ${item.note}` : ""}</div>`).join("")
-      : '<span class="muted">Chưa có lịch</span>';
+  weeks.forEach((week) => {
+    const status = week.hasConflict ? { label: "Có trùng", cls: "bad" }
+      : week.hasBusyDay ? { label: "Có ngày đông", cls: "bad" }
+      : week.total === 0 ? { label: "Trống", cls: "warn" }
+      : week.total <= 2 ? { label: "Ít", cls: "good" }
+      : { label: "Ổn", cls: "good" };
+    const schedules = week.days.length
+      ? week.days.map((day) => `<div class="week-summary-day"><strong>${formatDate(day.date)}</strong>${day.schedules}</div>`).join("")
+      : '<span class="muted">Chưa có lịch trong tuần.</span>';
 
     table.insertAdjacentHTML("beforeend", `
-      <div><strong>${formatDate(value)}</strong><small>${lunarInfo}</small></div>
-      <div>${items.length}</div>
+      <div><strong>${week.label}</strong></div>
+      <div>${week.total}</div>
       <div class="schedule-cell">${schedules}</div>
       <div><span class="badge ${status.cls}">${status.label}</span></div>
     `);
-  }
+  });
 
   overview.appendChild(table);
 }
-
 function buildZaloText() {
   const grouped = registrationsByDate();
   const year = visibleDate.getFullYear();
@@ -992,6 +1008,7 @@ dayDetail?.addEventListener("click", (event) => {
 });
 
 render();
+
 
 
 
