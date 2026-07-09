@@ -1,4 +1,4 @@
-﻿const SHEET_REG = "Registrations";
+const SHEET_REG = "Registrations";
 const SHEET_PEOPLE = "People";
 
 function setup() {
@@ -118,7 +118,12 @@ function deleteIds_(sheet, ids) {
 function rewritePeople_(sheet, people) {
   sheet.clear();
   sheet.appendRow(["name"]);
-  [...new Set(people.map(name => String(name || "").trim()).filter(Boolean))].forEach(name => sheet.appendRow([name]));
+  const unique = new Map();
+  people.map(name => String(name || "").trim()).filter(Boolean).forEach(name => {
+    const key = name.toLowerCase();
+    if (!unique.has(key)) unique.set(key, name);
+  });
+  [...unique.values()].forEach(name => sheet.appendRow([name]));
 }
 
 function syncPeopleFromRegistrations_(reg, people) {
