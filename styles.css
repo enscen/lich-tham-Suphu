@@ -227,3 +227,7 @@ h3 { margin: 0 0 14px; }
 .weekly-overview-table .week-summary-day { display: grid; gap: 4px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
 .weekly-overview-table .week-summary-day:last-child { border-bottom: 0; }
 .weekly-overview-table .week-summary-day > strong { color: var(--brand); }
+.week-schedule-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.week-schedule-row + .week-schedule-row { margin-top: 6px; }
+.week-schedule-row .row-actions { flex: 0 0 auto; }
+@media (max-width: 720px) { .week-schedule-row { align-items: flex-start; flex-direction: column; } }

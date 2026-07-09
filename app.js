@@ -897,7 +897,10 @@ function renderDailyOverview() {
       items,
       weekday: ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][(localDate(year, month, day).getDay() + 6) % 7],
       schedules: items.length
-        ? items.map((item) => `<div><strong>${item.name}</strong>: ${segmentTimeRange(item, value)}${item.note ? ` · ${item.note}` : ""}</div>`).join("")
+        ? items.map((item) => {
+          const duplicateIds = duplicateIdsForItem(item);
+          return `<div class="week-schedule-row"><span><strong>${item.name}</strong>: ${segmentTimeRange(item, value)}${item.note ? ` · ${item.note}` : ""}</span><span class="row-actions">${duplicateIds.length ? `<button class="ghost dedupe" type="button" data-id="${item.id}">Xóa trùng</button>` : ""}<button class="danger delete-one" type="button" data-id="${item.id}">Xóa</button></span></div>`;
+        }).join("")
         : '<span class="muted">Chưa có ai đăng ký.</span>',
     });
   }
@@ -930,6 +933,15 @@ function renderDailyOverview() {
   });
 
   overview.appendChild(table);
+  overview.onclick = (event) => {
+    const deleteButton = event.target.closest(".delete-one");
+    if (deleteButton) return deleteRegistration(deleteButton.dataset.id);
+    const dedupeButton = event.target.closest(".dedupe");
+    if (dedupeButton) {
+      const item = state.registrations.find((registration) => registration.id === dedupeButton.dataset.id);
+      if (item) deleteDuplicateRegistrations(item);
+    }
+  };
 }
 function buildZaloText() {
   const grouped = registrationsByDate();
@@ -1006,6 +1018,7 @@ dayDetail?.addEventListener("click", (event) => {
 });
 
 render();
+
 
 
 
