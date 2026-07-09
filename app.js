@@ -167,6 +167,11 @@ function formatDateTime(value) {
 }
 
 function formatDate(value) {
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function formatDateWithLunar(value) {
   const [year, month, day] = value.split("-").map(Number);
   const meta = lunarInfo(day, month - 1, year);
   const lunar = lunarLabel(meta);
@@ -925,7 +930,7 @@ function renderDailyOverview() {
       : week.total <= 2 ? { label: "Ít", cls: "good" }
       : { label: "Ổn", cls: "good" };
     const schedules = week.days.length
-      ? week.days.map((day) => `<div class="week-summary-day"><strong>${day.weekday} · ${formatDate(day.date)}</strong>${day.schedules}</div>`).join("")
+      ? week.days.map((day) => `<div class="week-summary-day"><strong>${day.weekday} · ${formatDateWithLunar(day.date)}</strong>${day.schedules}</div>`).join("")
       : '<span class="muted">Chưa có lịch trong tuần.</span>';
 
     table.insertAdjacentHTML("beforeend", `
