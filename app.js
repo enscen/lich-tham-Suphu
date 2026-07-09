@@ -869,6 +869,23 @@ function weekLabelForMonthDay(year, monthIndex, day) {
   const weekNumber = Math.floor((day + ((monthStart.getDay() + 6) % 7) - 1) / 7) + 1;
   return `Tuần ${weekNumber}: ${formatDate(dateKey(start))} - ${formatDate(dateKey(end))}`;
 }
+function renderDayMiniTable(items, value) {
+  if (!items.length) return '<span class="muted">Chưa có ai đăng ký.</span>';
+  const groups = new Map();
+  items.forEach((item) => {
+    const key = item.name.trim().toLowerCase();
+    if (!groups.has(key)) groups.set(key, { name: item.name, items: [] });
+    groups.get(key).items.push(item);
+  });
+
+  return `<div class="day-mini-table grouped-mini-table">${[...groups.values()].map((group) => {
+    const rows = group.items.map((item) => {
+      const duplicateIds = duplicateIdsForItem(item);
+      return `<div class="time-chip">${segmentTimeRange(item, value)}${item.note ? ` · ${item.note}` : ""}${duplicateIds.length ? ` <button class="ghost dedupe" type="button" data-id="${item.id}">Xóa trùng</button>` : ""}<button class="danger delete-one" type="button" data-id="${item.id}">Xóa</button></div>`;
+    }).join("");
+    return `<div class="person-cell"><strong>${group.name}</strong></div><div class="slots-cell">${rows}</div>`;
+  }).join("")}</div>`;
+}
 function renderDailyOverview() {
   const overview = document.querySelector("#dailyOverview");
   if (!overview) return;
@@ -896,12 +913,7 @@ function renderDailyOverview() {
       date: value,
       items,
       weekday: ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][(localDate(year, month, day).getDay() + 6) % 7],
-      schedules: items.length
-        ? `<div class="day-mini-table">${items.map((item) => {
-          const duplicateIds = duplicateIdsForItem(item);
-          return `<div>${item.name}</div><div>${segmentTimeRange(item, value).replace(" → ", " → ")}</div><div>${item.note || ""}</div><div class="row-actions week-actions">${duplicateIds.length ? `<button class="ghost dedupe" type="button" data-id="${item.id}">Xóa trùng</button>` : ""}<button class="danger delete-one" type="button" data-id="${item.id}">Xóa</button></div>`;
-        }).join("")}</div>`
-        : '<span class="muted">Chưa có ai đăng ký.</span>',
+      schedules: renderDayMiniTable(items, value),
     });
   }
 
@@ -1018,6 +1030,7 @@ dayDetail?.addEventListener("click", (event) => {
 });
 
 render();
+
 
 
 

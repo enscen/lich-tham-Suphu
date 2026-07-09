@@ -247,3 +247,10 @@ h3 { margin: 0 0 14px; }
 .day-mini-table .week-actions { justify-content: center; }
 .day-mini-table .week-actions button { padding: 4px 8px; }
 @media (max-width: 720px) { .day-mini-table { grid-template-columns: 1fr; } .day-mini-table > div { border-right: 0; } .day-mini-table > div:nth-child(4n-3) { font-weight: 900; background: var(--soft); } }
+.grouped-mini-table { grid-template-columns: minmax(130px, .8fr) minmax(280px, 2.2fr); }
+.grouped-mini-table > div:nth-child(2n) { border-right: 0; }
+.person-cell { font-weight: 900; background: #fffaf1; }
+.slots-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+.time-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px 4px 10px; background: #fffdf8; }
+.time-chip button { padding: 3px 7px; font-size: 12px; border-radius: 999px; }
+@media (max-width: 720px) { .grouped-mini-table { grid-template-columns: 1fr; } .slots-cell { display: grid; } }
