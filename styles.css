@@ -231,3 +231,6 @@ h3 { margin: 0 0 14px; }
 .week-schedule-row + .week-schedule-row { margin-top: 6px; }
 .week-schedule-row .row-actions { flex: 0 0 auto; }
 @media (max-width: 720px) { .week-schedule-row { align-items: flex-start; flex-direction: column; } }
+.week-schedule-row { align-items: flex-start; flex-direction: column; padding: 4px 0; }
+.week-actions { justify-content: flex-start; margin-top: 4px; }
+.week-actions button { font-size: 12px; padding: 6px 9px; }

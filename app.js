@@ -899,7 +899,7 @@ function renderDailyOverview() {
       schedules: items.length
         ? items.map((item) => {
           const duplicateIds = duplicateIdsForItem(item);
-          return `<div class="week-schedule-row"><span><strong>${item.name}</strong>: ${segmentTimeRange(item, value)}${item.note ? ` · ${item.note}` : ""}</span><span class="row-actions">${duplicateIds.length ? `<button class="ghost dedupe" type="button" data-id="${item.id}">Xóa trùng</button>` : ""}<button class="danger delete-one" type="button" data-id="${item.id}">Xóa</button></span></div>`;
+          return `<div class="week-schedule-row"><span><strong>${item.name}</strong>: ${segmentTimeRange(item, value)}${item.note ? ` · ${item.note}` : ""}</span><span class="row-actions week-actions">${duplicateIds.length ? `<button class="ghost dedupe" type="button" data-id="${item.id}">Xóa trùng</button>` : ""}<button class="danger delete-one" type="button" data-id="${item.id}">Xóa</button></span></div>`;
         }).join("")
         : '<span class="muted">Chưa có ai đăng ký.</span>',
     });
@@ -1018,6 +1018,7 @@ dayDetail?.addEventListener("click", (event) => {
 });
 
 render();
+
 
 
 
