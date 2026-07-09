@@ -866,11 +866,8 @@ function weekLabelForMonthDay(year, monthIndex, day) {
   const end = new Date(start);
   end.setDate(start.getDate() + 6);
   const monthStart = localDate(year, monthIndex, 1);
-  const monthEnd = localDate(year, monthIndex + 1, 0);
-  const visibleStart = start < monthStart ? monthStart : start;
-  const visibleEnd = end > monthEnd ? monthEnd : end;
   const weekNumber = Math.floor((day + ((monthStart.getDay() + 6) % 7) - 1) / 7) + 1;
-  return `Tuần ${weekNumber}: ${formatDate(dateKey(visibleStart))} - ${formatDate(dateKey(visibleEnd))}`;
+  return `Tuần ${weekNumber}: ${formatDate(dateKey(start))} - ${formatDate(dateKey(end))}`;
 }
 function renderDailyOverview() {
   const overview = document.querySelector("#dailyOverview");
@@ -1009,6 +1006,7 @@ dayDetail?.addEventListener("click", (event) => {
 });
 
 render();
+
 
 
 
