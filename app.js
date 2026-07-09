@@ -696,6 +696,8 @@ async function syncFromCloud() {
     if (data.ok === false) throw new Error(data.error || "Apps Script trả lỗi.");
     const cloudRegistrations = Array.isArray(data.registrations) ? data.registrations : Array.isArray(data) ? data : [];
     const cloudPeople = Array.isArray(data.people) ? data.people : [];
+    const cloudIds = new Set(cloudRegistrations.map((item) => item.id).filter(Boolean));
+    const missingLocal = state.registrations.filter((item) => item.id && !cloudIds.has(item.id));
 
     if (!cloudRegistrations.length && state.registrations.length) {
       setStatus("Dữ liệu online trống, giữ dữ liệu trên máy.", "warn");
@@ -706,6 +708,11 @@ async function syncFromCloud() {
     state.people = [...new Set([...state.people, ...cloudPeople].filter(Boolean))];
     saveState();
     render();
+    if (missingLocal.length) {
+      await Promise.all(missingLocal.map((item) => pushToCloud({ action: "add", item, people: state.people })));
+      setStatus(`Sheet thiếu ${missingLocal.length} lịch. Đã gửi bù lên Sheet.`, "warn");
+      return;
+    }
     setStatus("Đã đồng bộ online an toàn.", "good");
   } catch (error) {
     setStatus("Không tải được online. Đang dùng dữ liệu trên máy.", "bad");

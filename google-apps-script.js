@@ -1,9 +1,16 @@
 const SHEET_REG = "Registrations";
 const SHEET_PEOPLE = "People";
 const SHEET_DELETED = "Deleted";
+const DELETED_HEADERS = ["deletedAt", "action", "id", "name", "start", "end", "note", "restore", "restoredAt"];
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu("Lịch thăm").addItem("Restore dòng đã chọn", "restoreSelectedDeletedRows").addToUi();
+}
+
+function onEdit(e) {
+  const sheet = e && e.range && e.range.getSheet();
+  if (!sheet || sheet.getName() !== SHEET_DELETED || e.range.getColumn() !== 8 || e.value !== "TRUE") return;
+  restoreDeletedRow_(sheet, e.range.getRow());
 }
 
 function setup() {
@@ -14,7 +21,7 @@ function setup() {
   ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
   setRegistrationTextFormat_(reg);
   ensureHeaders_(people, ["name"]);
-  ensureHeaders_(deleted, ["deletedAt", "action", "id", "name", "start", "end", "note"]);
+  ensureDeletedSheet_(deleted);
 }
 
 function doGet() {
@@ -26,7 +33,7 @@ function doGet() {
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
     setRegistrationTextFormat_(reg);
     ensureHeaders_(people, ["name"]);
-    ensureHeaders_(deleted, ["deletedAt", "action", "id", "name", "start", "end", "note"]);
+    ensureDeletedSheet_(deleted);
     syncPeopleFromRegistrations_(reg, people);
 
     const registrations = reg.getDataRange().getValues().slice(1).filter(row => row[0]).map(row => ({
@@ -53,7 +60,7 @@ function doPost(e) {
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
     setRegistrationTextFormat_(reg);
     ensureHeaders_(people, ["name"]);
-    ensureHeaders_(deleted, ["deletedAt", "action", "id", "name", "start", "end", "note"]);
+    ensureDeletedSheet_(deleted);
 
     if (body.action === "add" && body.item) {
       const item = body.item;
@@ -93,24 +100,27 @@ function doPost(e) {
 }
 
 function restoreSelectedDeletedRows() {
+  const sheet = SpreadsheetApp.getActiveSheet();
+  if (sheet.getName() !== SHEET_DELETED) throw new Error("Select rows in Deleted first.");
+  const range = sheet.getActiveRange();
+  for (let row = range.getRow(); row < range.getRow() + range.getNumRows(); row += 1) restoreDeletedRow_(sheet, row);
+}
+
+function restoreDeletedRow_(deleted, rowNumber) {
+  if (rowNumber <= 1) return;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const deleted = ss.getActiveSheet();
-  if (deleted.getName() !== SHEET_DELETED) throw new Error("Chọn dòng trong tab Deleted trước.");
   const reg = ss.getSheetByName(SHEET_REG) || ss.insertSheet(SHEET_REG);
   const people = ss.getSheetByName(SHEET_PEOPLE) || ss.insertSheet(SHEET_PEOPLE);
   ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
   setRegistrationTextFormat_(reg);
   ensureHeaders_(people, ["name"]);
-  const ids = getIds_(reg);
-  deleted.getActiveRange().getValues().forEach(row => {
-    const item = { id: row[2], name: row[3], start: row[4], end: row[5], note: row[6] };
-    if (item.id && !ids.has(String(item.id))) {
-      appendRegistration_(reg, item);
-      ids.add(String(item.id));
-    }
-  });
+  const row = deleted.getRange(rowNumber, 1, 1, DELETED_HEADERS.length).getValues()[0];
+  const item = { id: row[2], name: row[3], start: row[4], end: row[5], note: row[6] };
+  if (item.id && !getIds_(reg).has(String(item.id))) appendRegistration_(reg, item);
+  deleted.getRange(rowNumber, 8, 1, 2).setValues([[false, new Date()]]);
   syncPeopleFromRegistrations_(reg, people);
 }
+
 function normalizeSchedule_(value) {
   return String(value || "").replace("T", " ");
 }
@@ -148,7 +158,13 @@ function deleteIds_(sheet, ids, deleted, action) {
 }
 
 function logDeletedRows_(sheet, rows, action) {
-  rows.filter(row => row[0]).forEach(row => sheet.appendRow([new Date(), action, row[0], row[1], row[2], row[3], row[4]]));
+  rows.filter(row => row[0]).forEach(row => sheet.appendRow([new Date(), action, row[0], row[1], row[2], row[3], row[4], false, ""]));
+  ensureDeletedSheet_(sheet);
+}
+
+function ensureDeletedSheet_(sheet) {
+  ensureHeaders_(sheet, DELETED_HEADERS);
+  sheet.getRange("H2:H").insertCheckboxes();
 }
 
 function rewritePeople_(sheet, people) {
