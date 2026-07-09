@@ -859,6 +859,19 @@ function daySpecificConflicts(item, dateValue) {
     return otherSegment && current.start < otherSegment.end && otherSegment.start < current.end;
   });
 }
+function weekLabelForMonthDay(year, monthIndex, day) {
+  const date = localDate(year, monthIndex, day);
+  const start = new Date(date);
+  start.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  const monthStart = localDate(year, monthIndex, 1);
+  const monthEnd = localDate(year, monthIndex + 1, 0);
+  const visibleStart = start < monthStart ? monthStart : start;
+  const visibleEnd = end > monthEnd ? monthEnd : end;
+  const weekNumber = Math.floor((day + ((monthStart.getDay() + 6) % 7) - 1) / 7) + 1;
+  return `Tuần ${weekNumber}: ${formatDate(dateKey(visibleStart))} - ${formatDate(dateKey(visibleEnd))}`;
+}
 function renderDailyOverview() {
   const overview = document.querySelector("#dailyOverview");
   if (!overview) return;
@@ -877,7 +890,13 @@ function renderDailyOverview() {
     <div class="overview-head">Trạng thái</div>
   `;
 
+  let lastWeekLabel = "";
   for (let day = 1; day <= daysInMonth; day += 1) {
+    const weekLabel = weekLabelForMonthDay(year, month, day);
+    if (weekLabel !== lastWeekLabel) {
+      table.insertAdjacentHTML("beforeend", `<div class="overview-week-row">${weekLabel}</div>`);
+      lastWeekLabel = weekLabel;
+    }
     const value = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const items = (grouped[value] || []).sort((a, b) => a.start.localeCompare(b.start));
     const status = dayStatus(value, items);
@@ -907,7 +926,13 @@ function buildZaloText() {
   const busyDays = [];
   const conflictDays = [];
 
+  let lastWeekLabel = "";
   for (let day = 1; day <= daysInMonth; day += 1) {
+    const weekLabel = weekLabelForMonthDay(year, month, day);
+    if (weekLabel !== lastWeekLabel) {
+      table.insertAdjacentHTML("beforeend", `<div class="overview-week-row">${weekLabel}</div>`);
+      lastWeekLabel = weekLabel;
+    }
     const value = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const items = (grouped[value] || []).sort((a, b) => a.start.localeCompare(b.start));
     if (!items.length) continue;
@@ -967,6 +992,7 @@ dayDetail?.addEventListener("click", (event) => {
 });
 
 render();
+
 
 
 

@@ -222,3 +222,5 @@ h3 { margin: 0 0 14px; }
   .week-toolbar button:first-child { grid-column: 1; }
   .week-toolbar button:last-child { grid-column: 2; }
 }
+.overview-week-row { grid-column: 1 / -1; background: #8d4b25 !important; color: white; font-weight: 900; letter-spacing: .01em; border-right: 0 !important; }
+@media (max-width: 720px) { .overview-week-row { border-radius: 14px; margin-top: 12px; } }
