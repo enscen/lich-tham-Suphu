@@ -18,6 +18,7 @@ function doGet() {
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
   setRegistrationTextFormat_(reg);
     ensureHeaders_(people, ["name"]);
+    syncPeopleFromRegistrations_(reg, people);
 
     const registrations = reg.getDataRange().getValues().slice(1).filter(row => row[0]).map(row => ({
       id: String(row[0] || ""),
@@ -49,20 +50,24 @@ function doPost(e) {
       if (!ids.has(String(item.id))) {
         appendRegistration_(reg, item);
       }
+      syncPeopleFromRegistrations_(reg, people);
     }
 
     if (body.action === "del" && body.id) {
       deleteIds_(reg, [String(body.id)]);
+      syncPeopleFromRegistrations_(reg, people);
     }
 
     if (body.action === "delMany" && Array.isArray(body.ids)) {
       deleteIds_(reg, body.ids.map(String));
+      syncPeopleFromRegistrations_(reg, people);
     }
 
     if (body.action === "overwriteAll" && Array.isArray(body.registrations)) {
       reg.clear();
       reg.appendRow(["id", "name", "start", "end", "note"]);
       body.registrations.forEach(item => appendRegistration_(reg, item));
+      syncPeopleFromRegistrations_(reg, people);
     }
 
     if (body.action === "people" && Array.isArray(body.people)) {
@@ -114,6 +119,12 @@ function rewritePeople_(sheet, people) {
   sheet.clear();
   sheet.appendRow(["name"]);
   [...new Set(people.map(name => String(name || "").trim()).filter(Boolean))].forEach(name => sheet.appendRow([name]));
+}
+
+function syncPeopleFromRegistrations_(reg, people) {
+  const existing = people.getDataRange().getValues().slice(1).map(row => String(row[0] || "").trim()).filter(Boolean);
+  const registered = reg.getDataRange().getValues().slice(1).map(row => String(row[1] || "").trim()).filter(Boolean);
+  rewritePeople_(people, existing.concat(registered));
 }
 
 function json(data) {
