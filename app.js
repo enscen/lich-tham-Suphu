@@ -552,14 +552,17 @@ async function deleteDuplicateRegistrations(item) {
   const ids = duplicateIdsForItem(item);
   if (!ids.length) return;
   if (!confirm(`Xóa ${ids.length} lịch trùng của ${item.name} trong ngày này? App sẽ giữ lại bản mới nhất.`)) return;
-  const ok = await pushToCloud({ action: "delMany", ids, people: state.people });
-  if (!ok) {
-    alert("Chưa xóa được trên Sheet, app sẽ giữ nguyên dữ liệu để tránh lệch.");
-    return;
-  }
+  const beforeDelete = state.registrations;
   state.registrations = state.registrations.filter((registration) => !ids.includes(registration.id));
   saveState();
   render();
+  const ok = await pushToCloud({ action: "delMany", ids, people: state.people }, false);
+  if (!ok) {
+    state.registrations = beforeDelete;
+    saveState();
+    render();
+    alert("Chưa xóa được trên Sheet, app đã khôi phục dữ liệu.");
+  }
 }
 function renderLists() {
   totalRegistered.textContent = String(registrationsInMonth().length);
@@ -654,7 +657,7 @@ async function syncFromCloud() {
   }
 }
 
-async function pushToCloud(payload) {
+async function pushToCloud(payload, syncAfter = true) {
   if (!apiUrl) return true;
   try {
     setStatus("Đang gửi lên Sheet...");
@@ -664,8 +667,8 @@ async function pushToCloud(payload) {
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(payload),
     });
-    setStatus("Đã gửi lệnh lên Sheet. Đang tải lại để kiểm tra...", "good");
-    setTimeout(() => syncFromCloud(), 1200);
+    setStatus(syncAfter ? "Đã gửi lên Sheet. Đang kiểm tra..." : "Đã gửi lệnh xóa lên Sheet.", "good");
+    if (syncAfter) setTimeout(() => syncFromCloud(), 1200);
     return true;
   } catch (error) {
     console.error(error);
@@ -674,7 +677,6 @@ async function pushToCloud(payload) {
     return false;
   }
 }
-
 async function addRegistration(item) {
   state.registrations.push(normalizeRegistration(item));
   if (!state.people.some((person) => person.toLowerCase() === item.name.toLowerCase())) state.people.push(item.name);
@@ -685,16 +687,18 @@ async function addRegistration(item) {
 
 async function deleteRegistration(id) {
   if (!confirm("Xóa lịch này khỏi app và Sheet?")) return;
-  const ok = await pushToCloud({ action: "del", id, people: state.people });
-  if (!ok) {
-    alert("Chưa xóa được trên Sheet, app sẽ giữ nguyên dữ liệu để tránh lệch.");
-    return;
-  }
+  const beforeDelete = state.registrations;
   state.registrations = state.registrations.filter((item) => item.id !== id);
   saveState();
   render();
+  const ok = await pushToCloud({ action: "del", id, people: state.people }, false);
+  if (!ok) {
+    state.registrations = beforeDelete;
+    saveState();
+    render();
+    alert("Chưa xóa được trên Sheet, app đã khôi phục dữ liệu.");
+  }
 }
-
 $("#prevMonth").addEventListener("click", () => {
   visibleDate.setMonth(visibleDate.getMonth() - 1);
   render();

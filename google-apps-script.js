@@ -4,7 +4,7 @@ const SHEET_DELETED = "Deleted";
 const DELETED_HEADERS = ["deletedAt", "action", "id", "name", "start", "end", "note", "restore", "restoredAt"];
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu("Lịch thăm").addItem("Restore dòng đã chọn", "restoreSelectedDeletedRows").addToUi();
+  SpreadsheetApp.getUi().createMenu("L\u1ecbch th\u0103m").addItem("Restore d\u00f2ng \u0111\u00e3 ch\u1ecdn", "restoreSelectedDeletedRows").addToUi();
 }
 
 function onEdit(e) {
@@ -93,6 +93,7 @@ function doPost(e) {
       rewritePeople_(people, body.people);
     }
 
+    SpreadsheetApp.flush();
     return json({ ok: true });
   } catch (error) {
     return json({ ok: false, error: String(error) });
