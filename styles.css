@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --bg: #f7f1e7;
   --panel: #fffaf1;
   --ink: #22190f;
@@ -254,3 +254,20 @@ h3 { margin: 0 0 14px; }
 .time-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px 4px 10px; background: #fffdf8; }
 .time-chip button { padding: 3px 7px; font-size: 12px; border-radius: 999px; }
 @media (max-width: 720px) { .grouped-mini-table { grid-template-columns: 1fr; } .slots-cell { display: grid; } }
+@media (max-width: 620px) {
+  html, body { max-width: 100%; overflow-x: hidden; }
+  .app-shell { width: 100%; padding: 10px 6px 28px; }
+  .calendar-card { padding: 8px; }
+  .calendar, .weekdays { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+  .weekdays span { min-width: 0; padding: 4px 0; font-size: 11px; }
+  .day { min-width: 0; min-height: 68px; padding: 4px 3px; gap: 3px; border-radius: 10px; overflow: hidden; }
+  .day-top { display: grid; justify-content: stretch; gap: 1px; }
+  .day-number { font-size: 13px; line-height: 1; }
+  .lunar-date { max-width: 100%; font-size: 8px; line-height: 1.1; white-space: normal; overflow-wrap: anywhere; }
+  .lunar-events, .names { display: none; }
+  .day-count { max-width: 100%; padding: 2px 4px; font-size: 9px; white-space: nowrap; overflow: hidden; }
+  .daily-overview { overflow-x: hidden; }
+  .overview-table, .schedule-cell, .week-summary-day, .day-mini-table, .grouped-mini-table, .person-cell, .slots-cell { min-width: 0; max-width: 100%; }
+  .overview-table > div { min-width: 0; padding: 8px; }
+  .time-chip { width: 100%; max-width: 100%; border-radius: 12px; flex-wrap: wrap; overflow-wrap: anywhere; white-space: normal; }
+}
