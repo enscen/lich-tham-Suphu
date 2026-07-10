@@ -795,7 +795,7 @@ function weekLabelForMonthDay(year, monthIndex, day) {
   return `Tuần ${weekNumber}: ${formatDate(dateKey(start))} - ${formatDate(dateKey(end))}`;
 }
 function renderDayMiniTable(items, value) {
-  if (!items.length) return '<span class="muted">Chưa có ai đăng ký.</span>';
+  if (!items.length) return '<span class="weekly-empty">Chưa có người đăng ký</span>';
   const groups = new Map();
   items.forEach((item) => {
     const key = item.name.trim().toLowerCase();
@@ -803,14 +803,16 @@ function renderDayMiniTable(items, value) {
     groups.get(key).items.push(item);
   });
 
-  return `<div class="day-mini-table grouped-mini-table">${[...groups.values()].map((group) => {
-    const rows = group.items.map((item) => {
+  return [...groups.values()].map((group) => {
+    const notes = [...new Set(group.items.map((item) => item.note).filter(Boolean))];
+    const slots = group.items.map((item) => {
       const duplicateIds = duplicateIdsForItem(item);
-      return `<div class="time-chip">${segmentTimeRange(item, value)}${item.note ? ` · ${item.note}` : ""}${duplicateIds.length ? ` <button class="ghost dedupe" type="button" data-id="${item.id}">Xóa trùng</button>` : ""}<button class="danger delete-one" type="button" data-id="${item.id}">Xóa</button></div>`;
+      return `<div class="time-chip"><span class="slot-time">${segmentTimeRange(item, value)}</span>${duplicateIds.length ? `<button class="dedupe" type="button" data-id="${item.id}">Xóa trùng</button>` : ""}<button class="delete-one" type="button" data-id="${item.id}">Xóa</button></div>`;
     }).join("");
-    return `<div class="person-cell"><strong>${group.name}</strong></div><div class="slots-cell">${rows}</div>`;
-  }).join("")}</div>`;
+    return `<div class="weekly-person-row"><div class="weekly-person-info"><strong>${group.name}</strong>${notes.length ? `<small>${notes.join(" · ")}</small>` : ""}</div><div class="slots-cell">${slots}</div></div>`;
+  }).join("");
 }
+
 function renderDailyOverview() {
   const overview = document.querySelector("#dailyOverview");
   if (!overview) return;
@@ -818,58 +820,39 @@ function renderDailyOverview() {
   const year = visibleDate.getFullYear();
   const month = visibleDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  overview.innerHTML = "";
-
   const weeks = [];
+
   for (let day = 1; day <= daysInMonth; day += 1) {
     const label = weekLabelForMonthDay(year, month, day);
     let week = weeks.find((item) => item.label === label);
     if (!week) {
-      week = { label, total: 0, days: [], hasConflict: false, hasBusyDay: false };
+      week = { label, total: 0, days: [] };
       weeks.push(week);
     }
 
     const value = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const items = (grouped[value] || []).sort((a, b) => a.start.localeCompare(b.start));
+    const meta = getLunarMeta(year, month + 1, day);
     week.total += items.length;
-    if (items.length >= maxPerDay) week.hasBusyDay = true;
-    if (items.some((item) => daySpecificConflicts(item, value).length)) week.hasConflict = true;
     week.days.push({
       date: value,
       items,
+      meta,
       weekday: ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][(localDate(year, month, day).getDay() + 6) % 7],
       schedules: renderDayMiniTable(items, value),
     });
   }
 
-  const table = document.createElement("div");
-  table.className = "overview-table weekly-overview-table";
-  table.innerHTML = `
-    <div class="overview-head">Tuần</div>
-    <div class="overview-head">Lượt</div>
-    <div class="overview-head">Lịch trong tuần</div>
-    <div class="overview-head">Trạng thái</div>
-  `;
+  overview.innerHTML = weeks.map((week, index) => {
+    const [title, range = ""] = week.label.split(": ");
+    const days = week.days.map((day) => {
+      const events = day.meta.events.join(" · ");
+      const busy = day.items.length >= maxPerDay ? " busy" : "";
+      return `<section class="week-day-block${busy}"><div class="week-day-title"><div><strong>${day.weekday} · ${formatDate(day.date)}</strong><span>${lunarLabel(day.meta)}${day.items.length ? ` · ${day.items.length} lượt` : ""}</span></div>${events ? `<p>${events}</p>` : ""}</div><div class="week-day-schedules">${day.schedules}</div></section>`;
+    }).join("");
+    return `<article class="week-card${index % 2 ? " alternate" : ""}"><header class="week-card-header"><div><h4>${title}</h4><small>${range.replace(" - ", "–")}</small></div><span>${week.total} lượt</span></header>${days}</article>`;
+  }).join("");
 
-  weeks.forEach((week) => {
-    const status = week.hasConflict ? { label: "Có trùng", cls: "bad" }
-      : week.hasBusyDay ? { label: "Có ngày đông", cls: "bad" }
-      : week.total === 0 ? { label: "Trống", cls: "warn" }
-      : week.total <= 2 ? { label: "Ít", cls: "good" }
-      : { label: "Ổn", cls: "good" };
-    const schedules = week.days.length
-      ? week.days.map((day) => `<div class="week-summary-day"><strong>${day.weekday} · ${formatDateWithLunar(day.date)}</strong>${day.schedules}</div>`).join("")
-      : '<span class="muted">Chưa có lịch trong tuần.</span>';
-
-    table.insertAdjacentHTML("beforeend", `
-      <div><strong>${week.label}</strong></div>
-      <div>${week.total}</div>
-      <div class="schedule-cell">${schedules}</div>
-      <div><span class="badge ${status.cls}">${status.label}</span></div>
-    `);
-  });
-
-  overview.appendChild(table);
   overview.onclick = (event) => {
     const deleteButton = event.target.closest(".delete-one");
     if (deleteButton) return deleteRegistration(deleteButton.dataset.id);
@@ -880,6 +863,7 @@ function renderDailyOverview() {
     }
   };
 }
+
 function buildZaloText() {
   const grouped = registrationsByDate();
   const year = visibleDate.getFullYear();
