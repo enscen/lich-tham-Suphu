@@ -34,7 +34,7 @@ function doGet() {
     const deleted = ss.getSheetByName(SHEET_DELETED) || ss.insertSheet(SHEET_DELETED);
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
     setRegistrationTextFormat_(reg);
-    repairRegistrationSheet_(reg);
+    repairRegistrationSheet_(reg, deleted);
     ensureHeaders_(people, ["name"]);
     ensureDeletedSheet_(deleted);
     syncPeopleFromRegistrations_(reg, people);
@@ -66,7 +66,7 @@ function doPost(e) {
     const deleted = ss.getSheetByName(SHEET_DELETED) || ss.insertSheet(SHEET_DELETED);
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
     setRegistrationTextFormat_(reg);
-    repairRegistrationSheet_(reg);
+    repairRegistrationSheet_(reg, deleted);
     ensureHeaders_(people, ["name"]);
     ensureDeletedSheet_(deleted);
     let deletedCount = 0;
@@ -196,29 +196,32 @@ function scheduleCellToText_(value) {
   return normalizeSchedule_(value);
 }
 
-function repairRegistrationSheet_(sheet) {
+function repairRegistrationSheet_(sheet, deleted) {
   const values = sheet.getDataRange().getValues();
   if (values.length <= 1) return;
   const seen = new Set();
   const groupOrder = new Map();
+  const duplicateRows = [];
   const rows = [];
   let changed = false;
   values.slice(1).forEach((row, index) => {
     const id = String(row[0] || "").trim();
+    const normalized = [id, String(row[1] || ""), scheduleCellToText_(row[2]), scheduleCellToText_(row[3]), String(row[4] || "")];
     if (!id || seen.has(id)) {
       changed = true;
+      if (id) duplicateRows.push(normalized);
       return;
     }
     seen.add(id);
     const group = id.replace(/__\d{4}-\d{2}-\d{2}$/, "");
     if (!groupOrder.has(group)) groupOrder.set(group, index);
-    const normalized = [id, String(row[1] || ""), scheduleCellToText_(row[2]), scheduleCellToText_(row[3]), String(row[4] || "")];
     if (normalized.some((value, column) => String(row[column] ?? "") !== value)) changed = true;
     rows.push({ group, values: normalized });
   });
   rows.sort((a, b) => groupOrder.get(a.group) - groupOrder.get(b.group) || a.values[2].localeCompare(b.values[2]));
   if (!changed && rows.every((row, index) => row.values[0] === String(values[index + 1][0] || ""))) return;
-  sheet.clearContents();
+  if (duplicateRows.length && deleted) logDeletedRows_(deleted, duplicateRows, "repairDuplicate");
+  sheet.getRange(1, 1, values.length, 5).clearContent();
   const output = [["id", "name", "start", "end", "note"]].concat(rows.map(row => row.values));
   const range = sheet.getRange(1, 1, output.length, 5);
   range.setNumberFormat("@");
@@ -262,8 +265,8 @@ function deleteIds_(sheet, ids, deleted, action) {
 }
 
 function logDeletedRows_(sheet, rows, action) {
-  rows.filter(row => row[0]).forEach(row => sheet.appendRow([new Date(), action, row[0], row[1], row[2], row[3], row[4], false, ""]));
   ensureDeletedSheet_(sheet);
+  rows.filter(row => row[0]).forEach(row => sheet.appendRow([new Date(), action, row[0], row[1], row[2], row[3], row[4], false, ""]));
 }
 
 function ensureDeletedSheet_(sheet) {
