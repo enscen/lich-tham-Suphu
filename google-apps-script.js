@@ -44,7 +44,7 @@ function doGet() {
       note: String(row[4] || ""),
     }));
     const peopleList = people.getDataRange().getValues().slice(1).map(row => String(row[0] || "")).filter(Boolean);
-    return json({ ok: true, version: "2026-07-13", registrations, people: peopleList });
+    return json({ ok: true, version: "2026-07-13-daily", registrations, people: peopleList });
   } catch (error) {
     return json({ ok: false, error: String(error) });
   }
@@ -62,13 +62,49 @@ function doPost(e) {
     ensureHeaders_(people, ["name"]);
     ensureDeletedSheet_(deleted);
     let deletedCount = 0;
+    let addedCount = 0;
+    let migratedCount = 0;
 
     if (body.action === "add" && body.item) {
       const item = body.item;
       const ids = getIds_(reg);
       if (!ids.has(String(item.id))) {
         appendRegistration_(reg, item);
+        addedCount = 1;
       }
+      syncPeopleFromRegistrations_(reg, people);
+    }
+
+
+    if (body.action === "addMany" && Array.isArray(body.items)) {
+      const ids = getIds_(reg);
+      body.items.forEach(item => {
+        const id = String(item.id || "");
+        if (id && !ids.has(id)) {
+          appendRegistration_(reg, item);
+          ids.add(id);
+          addedCount += 1;
+        }
+      });
+      syncPeopleFromRegistrations_(reg, people);
+    }
+
+    if (body.action === "splitMany" && Array.isArray(body.replacements)) {
+      const ids = getIds_(reg);
+      body.replacements.forEach(replacement => {
+        const oldId = String(replacement.id || "");
+        if (!oldId || !ids.has(oldId) || !Array.isArray(replacement.items)) return;
+        removeIds_(reg, [oldId]);
+        ids.delete(oldId);
+        replacement.items.forEach(item => {
+          const id = String(item.id || "");
+          if (id && !ids.has(id)) {
+            appendRegistration_(reg, item);
+            ids.add(id);
+          }
+        });
+        migratedCount += 1;
+      });
       syncPeopleFromRegistrations_(reg, people);
     }
 
@@ -95,7 +131,7 @@ function doPost(e) {
     }
 
     SpreadsheetApp.flush();
-    return json({ ok: true, deleted: deletedCount, version: "2026-07-13" });
+    return json({ ok: true, deleted: deletedCount, added: addedCount, migrated: migratedCount, version: "2026-07-13-daily" });
   } catch (error) {
     return json({ ok: false, error: String(error) });
   }
@@ -150,14 +186,25 @@ function getIds_(sheet) {
   return new Set(sheet.getDataRange().getValues().slice(1).map(row => String(row[0] || "")).filter(Boolean));
 }
 
+function removeIds_(sheet, ids) {
+  const idSet = new Set(ids.map(String));
+  const values = sheet.getDataRange().getValues();
+  let removed = 0;
+  for (let row = values.length - 1; row >= 1; row -= 1) {
+    if (idSet.has(String(values[row][0]))) {
+      sheet.deleteRow(row + 1);
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
 function deleteIds_(sheet, ids, deleted, action) {
-  const idSet = new Set(ids);
+  const idSet = new Set(ids.map(String));
   const values = sheet.getDataRange().getValues();
   const matches = values.slice(1).filter(row => idSet.has(String(row[0])));
   logDeletedRows_(deleted, matches, action);
-  for (let row = values.length - 1; row >= 1; row -= 1) {
-    if (idSet.has(String(values[row][0]))) sheet.deleteRow(row + 1);
-  }
+  removeIds_(sheet, ids);
   return matches.length;
 }
 

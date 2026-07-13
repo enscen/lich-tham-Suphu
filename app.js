@@ -158,6 +158,22 @@ function normalizeRegistration(item) {
     end: normalizeScheduleValue(item.end),
   };
 }
+function splitRegistrationByDay(item) {
+  const normalized = normalizeRegistration(item);
+  const dates = eachTouchedDate(normalized.start, normalized.end);
+  if (dates.length <= 1) return [normalized];
+  const originalStart = parseScheduleDate(normalized.start);
+  const originalEnd = parseScheduleDate(normalized.end);
+  return dates.map((dateValue) => {
+    const dayStart = parseScheduleDate(`${dateValue}T00:00`);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    const segmentStart = originalStart > dayStart ? originalStart : dayStart;
+    const segmentEnd = originalEnd < dayEnd ? originalEnd : dayEnd;
+    return { ...normalized, id: `${normalized.id}__${dateValue}`, start: toDatetimeValue(segmentStart), end: toDatetimeValue(segmentEnd) };
+  });
+}
+
 function formatDateTime(value) {
   const date = parseScheduleDate(value);
   return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
@@ -632,20 +648,27 @@ async function syncFromCloud() {
     const response = await fetch(apiUrl);
     const data = await response.json();
     if (data.ok === false) throw new Error(data.error || "Apps Script trả lỗi.");
-    const cloudRegistrations = Array.isArray(data.registrations) ? data.registrations : Array.isArray(data) ? data : [];
+    const rawCloud = Array.isArray(data.registrations) ? data.registrations : Array.isArray(data) ? data : [];
+    const replacements = rawCloud.map((item) => ({ id: item.id, items: splitRegistrationByDay(item) })).filter((entry) => entry.items.length > 1);
+    const cloudRegistrations = rawCloud.flatMap(splitRegistrationByDay);
+    const localRegistrations = state.registrations.flatMap(splitRegistrationByDay);
     const cloudPeople = Array.isArray(data.people) ? data.people : [];
     const cloudIds = new Set(cloudRegistrations.map((item) => item.id).filter(Boolean));
-    const missingLocal = state.registrations.filter((item) => item.id && !cloudIds.has(item.id));
+    const missingLocal = localRegistrations.filter((item) => item.id && !cloudIds.has(item.id));
 
-    if (!cloudRegistrations.length && state.registrations.length) {
+    if (!cloudRegistrations.length && localRegistrations.length) {
       setStatus("Dữ liệu online trống, giữ dữ liệu trên máy.", "warn");
       return;
     }
 
-    state.registrations = mergeById(state.registrations, cloudRegistrations);
+    state.registrations = mergeById(localRegistrations, cloudRegistrations);
     state.people = [...new Set([...state.people, ...cloudPeople].filter(Boolean))];
     saveState();
     render();
+    if (replacements.length) {
+      const migrated = await pushToCloud({ action: "splitMany", replacements }, false);
+      if (!migrated) return;
+    }
     if (missingLocal.length) {
       await Promise.all(missingLocal.map((item) => pushToCloud({ action: "add", item, people: state.people })));
       setStatus(`Sheet thiếu ${missingLocal.length} lịch. Đã gửi bù lên Sheet.`, "warn");
@@ -669,7 +692,13 @@ async function pushToCloud(payload, syncAfter = true) {
     const data = await response.json();
     if (!response.ok || data.ok === false) throw new Error(data.error || "Apps Script trả lỗi.");
     if ((payload.action === "del" || payload.action === "delMany") && typeof data.deleted !== "number") throw new Error("Apps Script chưa deploy bản xóa mới.");
-    setStatus(syncAfter ? "Đã đồng bộ Sheet." : `Đã xóa ${data.deleted} dòng trên Sheet.`, "good");
+    if (payload.action === "addMany" && typeof data.added !== "number") throw new Error("Apps Script chưa deploy bản ghi theo ngày.");
+    if (payload.action === "splitMany" && typeof data.migrated !== "number") throw new Error("Apps Script chưa deploy bản ghi theo ngày.");
+    const message = payload.action === "del" || payload.action === "delMany" ? `Đã xóa ${data.deleted} dòng trên Sheet.`
+      : payload.action === "splitMany" ? `Đã tách ${data.migrated} lịch cũ theo ngày.`
+      : payload.action === "addMany" ? `Đã lưu ${data.added} ngày lên Sheet.`
+      : "Đã đồng bộ Sheet.";
+    setStatus(message, "good");
     if (syncAfter) setTimeout(() => syncFromCloud(), 1200);
     return true;
   } catch (error) {
@@ -679,12 +708,21 @@ async function pushToCloud(payload, syncAfter = true) {
     return false;
   }
 }
-async function addRegistration(item) {
-  state.registrations.push(normalizeRegistration(item));
-  if (!state.people.some((person) => person.toLowerCase() === item.name.toLowerCase())) state.people.push(item.name);
+async function addRegistrations(items) {
+  const normalizedItems = items.map(normalizeRegistration);
+  const beforeAdd = state.registrations;
+  state.registrations = state.registrations.concat(normalizedItems);
+  const name = normalizedItems[0]?.name || "";
+  if (name && !state.people.some((person) => person.toLowerCase() === name.toLowerCase())) state.people.push(name);
   saveState();
   render();
-  await pushToCloud({ action: "add", item, people: state.people });
+  const ok = await pushToCloud({ action: "addMany", items: normalizedItems, people: state.people }, false);
+  if (!ok) {
+    state.registrations = beforeAdd;
+    saveState();
+    render();
+    alert("Chưa lưu được Sheet, app đã khôi phục dữ liệu.");
+  }
 }
 
 async function deleteRegistration(id) {
@@ -724,7 +762,7 @@ $("#registerForm").addEventListener("submit", async (event) => {
 
   visibleDate = new Date(start);
   visibleDate.setDate(1);
-  await addRegistration({ id: crypto.randomUUID(), name, start, end, note });
+  await addRegistrations(splitRegistrationByDay({ id: crypto.randomUUID(), name, start, end, note }));
   nameInput.value = "";
   noteInput.value = "";
   validateRange();
