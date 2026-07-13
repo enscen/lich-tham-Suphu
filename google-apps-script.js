@@ -138,6 +138,7 @@ function doPost(e) {
       rewritePeople_(people, body.people);
     }
 
+    repairRegistrationSheet_(reg, deleted);
     SpreadsheetApp.flush();
     return json({ ok: true, deleted: deletedCount, added: addedCount, migrated: migratedCount, version: "2026-07-13-daily" });
   } catch (error) {
@@ -200,11 +201,10 @@ function repairRegistrationSheet_(sheet, deleted) {
   const values = sheet.getDataRange().getValues();
   if (values.length <= 1) return;
   const seen = new Set();
-  const groupOrder = new Map();
   const duplicateRows = [];
   const rows = [];
   let changed = false;
-  values.slice(1).forEach((row, index) => {
+  values.slice(1).forEach(row => {
     const id = String(row[0] || "").trim();
     const normalized = [id, String(row[1] || ""), scheduleCellToText_(row[2]), scheduleCellToText_(row[3]), String(row[4] || "")];
     if (!id || seen.has(id)) {
@@ -213,16 +213,14 @@ function repairRegistrationSheet_(sheet, deleted) {
       return;
     }
     seen.add(id);
-    const group = id.replace(/__\d{4}-\d{2}-\d{2}$/, "");
-    if (!groupOrder.has(group)) groupOrder.set(group, index);
     if (normalized.some((value, column) => String(row[column] ?? "") !== value)) changed = true;
-    rows.push({ group, values: normalized });
+    rows.push(normalized);
   });
-  rows.sort((a, b) => groupOrder.get(a.group) - groupOrder.get(b.group) || a.values[2].localeCompare(b.values[2]));
-  if (!changed && rows.every((row, index) => row.values[0] === String(values[index + 1][0] || ""))) return;
+  rows.sort((a, b) => a[2].localeCompare(b[2]) || a[3].localeCompare(b[3]) || a[1].localeCompare(b[1]) || a[0].localeCompare(b[0]));
+  if (!changed && rows.every((row, index) => row[0] === String(values[index + 1][0] || ""))) return;
   if (duplicateRows.length && deleted) logDeletedRows_(deleted, duplicateRows, "repairDuplicate");
   sheet.getRange(1, 1, values.length, 5).clearContent();
-  const output = [["id", "name", "start", "end", "note"]].concat(rows.map(row => row.values));
+  const output = [["id", "name", "start", "end", "note"]].concat(rows);
   const range = sheet.getRange(1, 1, output.length, 5);
   range.setNumberFormat("@");
   range.setValues(output);
