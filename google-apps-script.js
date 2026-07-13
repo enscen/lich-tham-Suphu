@@ -44,7 +44,7 @@ function doGet() {
       note: String(row[4] || ""),
     }));
     const peopleList = people.getDataRange().getValues().slice(1).map(row => String(row[0] || "")).filter(Boolean);
-    return json({ ok: true, registrations, people: peopleList });
+    return json({ ok: true, version: "2026-07-13", registrations, people: peopleList });
   } catch (error) {
     return json({ ok: false, error: String(error) });
   }
@@ -61,6 +61,7 @@ function doPost(e) {
     setRegistrationTextFormat_(reg);
     ensureHeaders_(people, ["name"]);
     ensureDeletedSheet_(deleted);
+    let deletedCount = 0;
 
     if (body.action === "add" && body.item) {
       const item = body.item;
@@ -72,12 +73,12 @@ function doPost(e) {
     }
 
     if (body.action === "del" && body.id) {
-      deleteIds_(reg, [String(body.id)], deleted, "del");
+      deletedCount = deleteIds_(reg, [String(body.id)], deleted, "del");
       syncPeopleFromRegistrations_(reg, people);
     }
 
     if (body.action === "delMany" && Array.isArray(body.ids)) {
-      deleteIds_(reg, body.ids.map(String), deleted, "delMany");
+      deletedCount = deleteIds_(reg, body.ids.map(String), deleted, "delMany");
       syncPeopleFromRegistrations_(reg, people);
     }
 
@@ -94,7 +95,7 @@ function doPost(e) {
     }
 
     SpreadsheetApp.flush();
-    return json({ ok: true });
+    return json({ ok: true, deleted: deletedCount, version: "2026-07-13" });
   } catch (error) {
     return json({ ok: false, error: String(error) });
   }
@@ -152,10 +153,12 @@ function getIds_(sheet) {
 function deleteIds_(sheet, ids, deleted, action) {
   const idSet = new Set(ids);
   const values = sheet.getDataRange().getValues();
-  logDeletedRows_(deleted, values.slice(1).filter(row => idSet.has(String(row[0]))), action);
+  const matches = values.slice(1).filter(row => idSet.has(String(row[0])));
+  logDeletedRows_(deleted, matches, action);
   for (let row = values.length - 1; row >= 1; row -= 1) {
     if (idSet.has(String(values[row][0]))) sheet.deleteRow(row + 1);
   }
+  return matches.length;
 }
 
 function logDeletedRows_(sheet, rows, action) {

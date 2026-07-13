@@ -661,13 +661,15 @@ async function pushToCloud(payload, syncAfter = true) {
   if (!apiUrl) return true;
   try {
     setStatus("Đang gửi lên Sheet...");
-    await fetch(apiUrl, {
+    const response = await fetch(apiUrl, {
       method: "POST",
-      mode: "no-cors",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(payload),
     });
-    setStatus(syncAfter ? "Đã gửi lên Sheet. Đang kiểm tra..." : "Đã gửi lệnh xóa lên Sheet.", "good");
+    const data = await response.json();
+    if (!response.ok || data.ok === false) throw new Error(data.error || "Apps Script trả lỗi.");
+    if ((payload.action === "del" || payload.action === "delMany") && typeof data.deleted !== "number") throw new Error("Apps Script chưa deploy bản xóa mới.");
+    setStatus(syncAfter ? "Đã đồng bộ Sheet." : `Đã xóa ${data.deleted} dòng trên Sheet.`, "good");
     if (syncAfter) setTimeout(() => syncFromCloud(), 1200);
     return true;
   } catch (error) {
