@@ -66,7 +66,6 @@ function doPost(e) {
     const deleted = ss.getSheetByName(SHEET_DELETED) || ss.insertSheet(SHEET_DELETED);
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
     setRegistrationTextFormat_(reg);
-    repairRegistrationSheet_(reg, deleted);
     ensureHeaders_(people, ["name"]);
     ensureDeletedSheet_(deleted);
     let deletedCount = 0;
@@ -167,6 +166,7 @@ function restoreDeletedRow_(deleted, rowNumber) {
   const item = { id: row[2], name: row[3], start: row[4], end: row[5], note: row[6] };
   if (item.id && !getIds_(reg).has(String(item.id))) appendRegistration_(reg, item);
   deleted.getRange(rowNumber, 8, 1, 2).setValues([[false, new Date()]]);
+  repairRegistrationSheet_(reg, deleted);
   syncPeopleFromRegistrations_(reg, people);
 }
 
@@ -217,13 +217,49 @@ function repairRegistrationSheet_(sheet, deleted) {
     rows.push(normalized);
   });
   rows.sort((a, b) => a[2].localeCompare(b[2]) || a[3].localeCompare(b[3]) || a[1].localeCompare(b[1]) || a[0].localeCompare(b[0]));
-  if (!changed && rows.every((row, index) => row[0] === String(values[index + 1][0] || ""))) return;
-  if (duplicateRows.length && deleted) logDeletedRows_(deleted, duplicateRows, "repairDuplicate");
-  sheet.getRange(1, 1, values.length, 5).clearContent();
-  const output = [["id", "name", "start", "end", "note"]].concat(rows);
-  const range = sheet.getRange(1, 1, output.length, 5);
-  range.setNumberFormat("@");
-  range.setValues(output);
+  const needsRewrite = changed || !rows.every((row, index) => row[0] === String(values[index + 1][0] || ""));
+  if (needsRewrite) {
+    if (duplicateRows.length && deleted) logDeletedRows_(deleted, duplicateRows, "repairDuplicate");
+    sheet.getRange(1, 1, values.length, 5).clearContent();
+    const output = [["id", "name", "start", "end", "note"]].concat(rows);
+    const range = sheet.getRange(1, 1, output.length, 5);
+    range.setNumberFormat("@");
+    range.setValues(output);
+  }
+  formatRegistrationSheet_(sheet, rows);
+}
+
+function dayNumber_(value) {
+  const parts = String(value || "").split("-").map(Number);
+  return parts.length === 3 ? Date.UTC(parts[0], parts[1] - 1, parts[2]) / 86400000 : NaN;
+}
+
+function formatRegistrationSheet_(sheet, rows) {
+  if (!rows.length) return;
+  const groups = new Map();
+  const dataRange = sheet.getRange(2, 1, rows.length, 5);
+  dataRange.setBackground("#ffffff").setFontColor("#111827").setFontWeight("normal");
+  dataRange.setBorder(true, true, true, true, true, true, "#d1d5db", SpreadsheetApp.BorderStyle.SOLID);
+
+  let dayStart = 0;
+  rows.forEach((row, index) => {
+    const id = String(row[0] || "");
+    const group = id.replace(/__\d{4}-\d{2}-\d{2}$/, "");
+    const day = String(row[2] || "").slice(0, 10);
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push({ row: index + 2, day });
+    if (index < rows.length - 1 && day === String(rows[index + 1][2] || "").slice(0, 10)) return;
+    const dayRange = sheet.getRange(dayStart + 2, 1, index - dayStart + 1, 5);
+    dayRange.setBackground(dayNumber_(day) % 2 ? "#f8fafc" : "#eef6ff");
+    dayRange.setBorder(true, true, true, true, null, null, "#2563eb", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+    dayStart = index + 1;
+  });
+
+  groups.forEach(entries => {
+    const days = [...new Set(entries.map(entry => entry.day))].sort();
+    const consecutive = days.length > 1 && days.every((day, index) => index === 0 || dayNumber_(day) === dayNumber_(days[index - 1]) + 1);
+    if (consecutive) entries.forEach(entry => sheet.getRange(entry.row, 2).setBackground("#fef3c7").setFontColor("#92400e").setFontWeight("bold"));
+  });
 }
 
 function ensureHeaders_(sheet, headers) {
@@ -263,8 +299,14 @@ function deleteIds_(sheet, ids, deleted, action) {
 }
 
 function logDeletedRows_(sheet, rows, action) {
+  const matches = rows.filter(row => row[0]);
+  if (!matches.length) return 0;
   ensureDeletedSheet_(sheet);
-  rows.filter(row => row[0]).forEach(row => sheet.appendRow([new Date(), action, row[0], row[1], row[2], row[3], row[4], false, ""]));
+  const startRow = sheet.getLastRow() + 1;
+  sheet.getRange(startRow, 1, matches.length, DELETED_HEADERS.length).setValues(matches.map(row => [new Date(), action, row[0], row[1], scheduleCellToText_(row[2]), scheduleCellToText_(row[3]), row[4], false, ""]));
+  sheet.getRange(startRow, 1, matches.length, 1).setNumberFormat("yyyy-MM-dd HH:mm:ss");
+  sheet.getRange(startRow, 8, matches.length, 1).insertCheckboxes();
+  return matches.length;
 }
 
 function ensureDeletedSheet_(sheet) {
