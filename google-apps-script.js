@@ -25,6 +25,8 @@ function setup() {
 }
 
 function doGet() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const reg = ss.getSheetByName(SHEET_REG) || ss.insertSheet(SHEET_REG);
@@ -32,6 +34,7 @@ function doGet() {
     const deleted = ss.getSheetByName(SHEET_DELETED) || ss.insertSheet(SHEET_DELETED);
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
     setRegistrationTextFormat_(reg);
+    repairRegistrationSheet_(reg);
     ensureHeaders_(people, ["name"]);
     ensureDeletedSheet_(deleted);
     syncPeopleFromRegistrations_(reg, people);
@@ -47,10 +50,14 @@ function doGet() {
     return json({ ok: true, version: "2026-07-13-daily", registrations, people: peopleList });
   } catch (error) {
     return json({ ok: false, error: String(error) });
+  } finally {
+    lock.releaseLock();
   }
 }
 
 function doPost(e) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
   try {
     const body = JSON.parse((e && e.postData && e.postData.contents) || "{}");
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -59,6 +66,7 @@ function doPost(e) {
     const deleted = ss.getSheetByName(SHEET_DELETED) || ss.insertSheet(SHEET_DELETED);
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
     setRegistrationTextFormat_(reg);
+    repairRegistrationSheet_(reg);
     ensureHeaders_(people, ["name"]);
     ensureDeletedSheet_(deleted);
     let deletedCount = 0;
@@ -134,6 +142,8 @@ function doPost(e) {
     return json({ ok: true, deleted: deletedCount, added: addedCount, migrated: migratedCount, version: "2026-07-13-daily" });
   } catch (error) {
     return json({ ok: false, error: String(error) });
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -168,8 +178,51 @@ function setRegistrationTextFormat_(sheet) {
 }
 
 function appendRegistration_(sheet, item) {
-  setRegistrationTextFormat_(sheet);
-  sheet.appendRow([String(item.id || ""), String(item.name || ""), normalizeSchedule_(item.start), normalizeSchedule_(item.end), String(item.note || "")]);
+  const row = sheet.getLastRow() + 1;
+  const range = sheet.getRange(row, 1, 1, 5);
+  range.setNumberFormat("@");
+  range.setValues([[String(item.id || ""), String(item.name || ""), normalizeSchedule_(item.start), normalizeSchedule_(item.end), String(item.note || "")]]);
+}
+
+
+function scheduleCellToText_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), "yyyy-MM-dd HH:mm");
+  }
+  if (typeof value === "number" || /^\d+(?:[.,]\d+)?$/.test(String(value || "").trim())) {
+    const serial = Number(String(value).replace(",", "."));
+    if (Number.isFinite(serial) && serial > 20000) return Utilities.formatDate(new Date(Math.round((serial - 25569) * 86400000)), "UTC", "yyyy-MM-dd HH:mm");
+  }
+  return normalizeSchedule_(value);
+}
+
+function repairRegistrationSheet_(sheet) {
+  const values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return;
+  const seen = new Set();
+  const groupOrder = new Map();
+  const rows = [];
+  let changed = false;
+  values.slice(1).forEach((row, index) => {
+    const id = String(row[0] || "").trim();
+    if (!id || seen.has(id)) {
+      changed = true;
+      return;
+    }
+    seen.add(id);
+    const group = id.replace(/__\d{4}-\d{2}-\d{2}$/, "");
+    if (!groupOrder.has(group)) groupOrder.set(group, index);
+    const normalized = [id, String(row[1] || ""), scheduleCellToText_(row[2]), scheduleCellToText_(row[3]), String(row[4] || "")];
+    if (normalized.some((value, column) => String(row[column] ?? "") !== value)) changed = true;
+    rows.push({ group, values: normalized });
+  });
+  rows.sort((a, b) => groupOrder.get(a.group) - groupOrder.get(b.group) || a.values[2].localeCompare(b.values[2]));
+  if (!changed && rows.every((row, index) => row.values[0] === String(values[index + 1][0] || ""))) return;
+  sheet.clearContents();
+  const output = [["id", "name", "start", "end", "note"]].concat(rows.map(row => row.values));
+  const range = sheet.getRange(1, 1, output.length, 5);
+  range.setNumberFormat("@");
+  range.setValues(output);
 }
 
 function ensureHeaders_(sheet, headers) {

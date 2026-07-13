@@ -670,8 +670,8 @@ async function syncFromCloud() {
       if (!migrated) return;
     }
     if (missingLocal.length) {
-      await Promise.all(missingLocal.map((item) => pushToCloud({ action: "add", item, people: state.people })));
-      setStatus(`Sheet thiếu ${missingLocal.length} lịch. Đã gửi bù lên Sheet.`, "warn");
+      const repaired = await pushToCloud({ action: "addMany", items: missingLocal, people: state.people }, false);
+      if (repaired) setStatus(`Sheet thiếu ${missingLocal.length} lịch. Đã gửi bù lên Sheet.`, "warn");
       return;
     }
     setStatus("Đã đồng bộ online an toàn.", "good");
