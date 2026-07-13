@@ -465,6 +465,11 @@ const buddhistLunarEvents = {
   "12-29": ["Ngày vía Hoa Nghiêm Bồ Tát"],
 };
 
+const solarAnnualEvents = {
+  "07-27": ["Sinh nhật Đại sư huynh"],
+  "10-29": ["Sinh nhật Sư phụ"],
+};
+
 const vajrayanaMonthlyEvents = {
   1: "KCT: Phật A Súc Bệ",
   8: "KCT: Phật Dược Sư",
@@ -484,7 +489,7 @@ function getLunarMeta(year, month, day) {
   try {
     const lunar = convertSolarToLunar(day, month, year, 7);
     const key = `${lunar.month}-${lunar.day}`;
-    const events = [...(buddhistLunarEvents[key] || [])];
+    const events = [...(solarAnnualEvents[`${pad2(month)}-${pad2(day)}`] || []), ...(buddhistLunarEvents[key] || [])];
     if (lunar.day === 1 && !events.some((event) => event.includes("Mùng 1") || event.includes("Tết"))) events.unshift(`Mùng 1 tháng ${lunar.month}`);
     if (lunar.day === 15 && !events.some((event) => event.includes("Rằm"))) events.unshift(`Rằm tháng ${lunar.month}`);
     if (vajrayanaMonthlyEvents[lunar.day]) events.push(vajrayanaMonthlyEvents[lunar.day]);
