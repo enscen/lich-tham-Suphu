@@ -225,7 +225,7 @@ function repairRegistrationSheet_(sheet, deleted) {
       return;
     }
     seen.add(id);
-    if (normalized.some((value, column) => String(row[column] ?? "") !== value)) changed = true;
+    if (normalized.some((value, column) => String(row[column] == null ? "" : row[column]) !== value)) changed = true;
     sourceRows.push(normalized);
   });
 
@@ -240,7 +240,7 @@ function repairRegistrationSheet_(sheet, deleted) {
     if (row[2] < group.start) group.start = row[2];
     if (row[3] > group.end) group.end = row[3];
     if (!group.note && row[4]) group.note = row[4];
-    group.daily ||= daily;
+    group.daily = group.daily || daily;
     groups.set(key, group);
   });
 
