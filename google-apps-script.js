@@ -26,8 +26,8 @@ function setup() {
 
 function doGet() {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
   try {
+    if (!lock.tryLock(60000)) throw new Error("Sheet đang bận, vui lòng thử lại.");
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const reg = ss.getSheetByName(SHEET_REG) || ss.insertSheet(SHEET_REG);
     const people = ss.getSheetByName(SHEET_PEOPLE) || ss.insertSheet(SHEET_PEOPLE);
@@ -51,14 +51,14 @@ function doGet() {
   } catch (error) {
     return json({ ok: false, error: String(error) });
   } finally {
-    lock.releaseLock();
+    if (lock.hasLock()) lock.releaseLock();
   }
 }
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
   try {
+    if (!lock.tryLock(60000)) throw new Error("Sheet đang bận, vui lòng thử lại.");
     const body = JSON.parse((e && e.postData && e.postData.contents) || "{}");
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const reg = ss.getSheetByName(SHEET_REG) || ss.insertSheet(SHEET_REG);
@@ -137,13 +137,13 @@ function doPost(e) {
       rewritePeople_(people, body.people);
     }
 
-    repairRegistrationSheet_(reg, deleted);
+    repairRegistrationSheet_(reg, deleted, true);
     SpreadsheetApp.flush();
     return json({ ok: true, deleted: deletedCount, added: addedCount, migrated: migratedCount, version: "2026-07-16-collapse" });
   } catch (error) {
     return json({ ok: false, error: String(error) });
   } finally {
-    lock.releaseLock();
+    if (lock.hasLock()) lock.releaseLock();
   }
 }
 
@@ -166,7 +166,7 @@ function restoreDeletedRow_(deleted, rowNumber) {
   const item = { id: row[2], name: row[3], start: row[4], end: row[5], note: row[6] };
   if (item.id && !getIds_(reg).has(String(item.id))) appendRegistration_(reg, item);
   deleted.getRange(rowNumber, 8, 1, 2).setValues([[false, new Date()]]);
-  repairRegistrationSheet_(reg, deleted);
+  repairRegistrationSheet_(reg, deleted, true);
   syncPeopleFromRegistrations_(reg, people);
 }
 
@@ -203,7 +203,7 @@ function scheduleCellToText_(value) {
   return normalizeSchedule_(restored);
 }
 
-function repairRegistrationSheet_(sheet, deleted) {
+function repairRegistrationSheet_(sheet, deleted, forceFormat) {
   const values = sheet.getDataRange().getValues();
   if (values.length <= 1) return;
   const seen = new Set();
@@ -265,7 +265,7 @@ function repairRegistrationSheet_(sheet, deleted) {
     range.setNumberFormat("@");
     range.setValues(output);
   }
-  formatRegistrationSheet_(sheet, rows);
+  if (needsRewrite || forceFormat) formatRegistrationSheet_(sheet, rows);
 }
 
 function dayNumber_(value) {
@@ -315,16 +315,17 @@ function getIds_(sheet) {
   return new Set(sheet.getDataRange().getValues().slice(1).map(row => String(row[0] || "")).filter(Boolean));
 }
 
-function removeIds_(sheet, ids) {
+function removeIds_(sheet, ids, sourceValues) {
   const idSet = new Set(ids.map(String));
-  const values = sheet.getDataRange().getValues();
-  let removed = 0;
-  for (let row = values.length - 1; row >= 1; row -= 1) {
-    if (idSet.has(String(values[row][0]))) {
-      sheet.deleteRow(row + 1);
-      removed += 1;
-    }
-  }
+  const values = sourceValues || sheet.getDataRange().getValues();
+  const kept = values.slice(1).filter(row => !idSet.has(String(row[0])));
+  const removed = values.length - 1 - kept.length;
+  if (!removed) return 0;
+  sheet.getRange(1, 1, values.length, 5).clearContent();
+  const output = [values[0]].concat(kept);
+  const range = sheet.getRange(1, 1, output.length, 5);
+  range.setNumberFormat("@");
+  range.setValues(output);
   return removed;
 }
 
@@ -333,7 +334,7 @@ function deleteIds_(sheet, ids, deleted, action) {
   const values = sheet.getDataRange().getValues();
   const matches = values.slice(1).filter(row => idSet.has(String(row[0])));
   logDeletedRows_(deleted, matches, action);
-  removeIds_(sheet, ids);
+  removeIds_(sheet, ids, values);
   return matches.length;
 }
 
