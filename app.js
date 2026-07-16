@@ -606,21 +606,9 @@ function duplicateIdsForItem(item) {
 }
 
 async function deleteDuplicateRegistrations(item) {
-  const ids = duplicateIdsForItem(item);
-  if (!ids.length) return;
-  if (!confirm(`Xóa ${ids.length} lịch trùng của ${item.name} trong ngày này? App sẽ giữ lại bản mới nhất.`)) return;
-  const beforeDelete = state.registrations;
-  state.registrations = state.registrations.filter((registration) => !ids.includes(registration.id));
-  saveState();
-  render();
-  const cloudIds = beforeDelete.filter(registration => ids.includes(registration.id)).flatMap(registration => registration.sourceIds?.length ? registration.sourceIds : [registration.id]);
-  const ok = await pushToCloud({ action: "delMany", ids: cloudIds, people: state.people }, false);
-  if (!ok) {
-    state.registrations = beforeDelete;
-    saveState();
-    render();
-    alert("Chưa xóa được trên Sheet, app đã khôi phục dữ liệu.");
-  }
+  if (!duplicateIdsForItem(item).length) return;
+  if (!confirm(`Xóa đúng lịch trùng của ${item.name}: ${formatDateTime(item.start)}–${formatDateTime(item.end)}?`)) return;
+  await deleteRegistration(item.id, true);
 }
 function renderLists() {
   totalRegistered.textContent = String(new Set(registrationsInMonth().map(item => registrationRootId(item.id))).size);
@@ -756,8 +744,8 @@ async function addRegistrations(items) {
   }
 }
 
-async function deleteRegistration(id) {
-  if (!confirm("Xóa lịch này khỏi app và Sheet?")) return;
+async function deleteRegistration(id, confirmed = false) {
+  if (!confirmed && !confirm("Xóa lịch này khỏi app và Sheet?")) return;
   const beforeDelete = state.registrations;
   state.registrations = state.registrations.filter((item) => item.id !== id);
   saveState();
