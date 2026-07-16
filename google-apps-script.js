@@ -33,7 +33,6 @@ function doGet() {
     const people = ss.getSheetByName(SHEET_PEOPLE) || ss.insertSheet(SHEET_PEOPLE);
     const deleted = ss.getSheetByName(SHEET_DELETED) || ss.insertSheet(SHEET_DELETED);
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
-    setRegistrationTextFormat_(reg);
     repairRegistrationSheet_(reg, deleted);
     ensureHeaders_(people, ["name"]);
     ensureDeletedSheet_(deleted);
@@ -47,7 +46,7 @@ function doGet() {
       note: String(row[4] || ""),
     }));
     const peopleList = people.getDataRange().getValues().slice(1).map(row => String(row[0] || "")).filter(Boolean);
-    return json({ ok: true, version: "2026-07-16-collapse", registrations, people: peopleList });
+    return json({ ok: true, version: "2026-07-16-delete-batch-v2", registrations, people: peopleList });
   } catch (error) {
     return json({ ok: false, error: String(error) });
   } finally {
@@ -65,7 +64,6 @@ function doPost(e) {
     const people = ss.getSheetByName(SHEET_PEOPLE) || ss.insertSheet(SHEET_PEOPLE);
     const deleted = ss.getSheetByName(SHEET_DELETED) || ss.insertSheet(SHEET_DELETED);
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
-    setRegistrationTextFormat_(reg);
     ensureHeaders_(people, ["name"]);
     ensureDeletedSheet_(deleted);
     let deletedCount = 0;
@@ -137,9 +135,10 @@ function doPost(e) {
       rewritePeople_(people, body.people);
     }
 
-    repairRegistrationSheet_(reg, deleted, true);
+    const shouldFormat = ["add", "addMany", "splitMany", "overwriteAll"].indexOf(body.action) >= 0;
+    repairRegistrationSheet_(reg, deleted, shouldFormat);
     SpreadsheetApp.flush();
-    return json({ ok: true, deleted: deletedCount, added: addedCount, migrated: migratedCount, version: "2026-07-16-collapse" });
+    return json({ ok: true, deleted: deletedCount, added: addedCount, migrated: migratedCount, version: "2026-07-16-delete-batch-v2" });
   } catch (error) {
     return json({ ok: false, error: String(error) });
   } finally {
@@ -160,7 +159,6 @@ function restoreDeletedRow_(deleted, rowNumber) {
   const reg = ss.getSheetByName(SHEET_REG) || ss.insertSheet(SHEET_REG);
   const people = ss.getSheetByName(SHEET_PEOPLE) || ss.insertSheet(SHEET_PEOPLE);
   ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
-  setRegistrationTextFormat_(reg);
   ensureHeaders_(people, ["name"]);
   const row = deleted.getRange(rowNumber, 1, 1, DELETED_HEADERS.length).getValues()[0];
   const item = { id: row[2], name: row[3], start: row[4], end: row[5], note: row[6] };
@@ -351,18 +349,19 @@ function logDeletedRows_(sheet, rows, action) {
 
 function ensureDeletedSheet_(sheet) {
   ensureHeaders_(sheet, DELETED_HEADERS);
-  sheet.getRange("H2:H").insertCheckboxes();
 }
 
 function rewritePeople_(sheet, people) {
-  sheet.clear();
-  sheet.appendRow(["name"]);
   const unique = new Map();
   people.map(name => String(name || "").trim()).filter(Boolean).forEach(name => {
     const key = name.toLowerCase();
     if (!unique.has(key)) unique.set(key, name);
   });
-  [...unique.values()].forEach(name => sheet.appendRow([name]));
+  const output = [["name"]].concat([...unique.values()].map(name => [name]));
+  const current = sheet.getDataRange().getValues();
+  if (current.length === output.length && current.every((row, index) => String(row[0] || "") === output[index][0])) return;
+  sheet.clearContents();
+  sheet.getRange(1, 1, output.length, 1).setValues(output);
 }
 
 function syncPeopleFromRegistrations_(reg, people) {
