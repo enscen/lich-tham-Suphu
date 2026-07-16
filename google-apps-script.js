@@ -47,7 +47,7 @@ function doGet() {
       note: String(row[4] || ""),
     }));
     const peopleList = people.getDataRange().getValues().slice(1).map(row => String(row[0] || "")).filter(Boolean);
-    return json({ ok: true, version: "2026-07-13-daily", registrations, people: peopleList });
+    return json({ ok: true, version: "2026-07-16-collapse", registrations, people: peopleList });
   } catch (error) {
     return json({ ok: false, error: String(error) });
   } finally {
@@ -139,7 +139,7 @@ function doPost(e) {
 
     repairRegistrationSheet_(reg, deleted);
     SpreadsheetApp.flush();
-    return json({ ok: true, deleted: deletedCount, added: addedCount, migrated: migratedCount, version: "2026-07-13-daily" });
+    return json({ ok: true, deleted: deletedCount, added: addedCount, migrated: migratedCount, version: "2026-07-16-collapse" });
   } catch (error) {
     return json({ ok: false, error: String(error) });
   } finally {
@@ -171,7 +171,7 @@ function restoreDeletedRow_(deleted, rowNumber) {
 }
 
 function normalizeSchedule_(value) {
-  return String(value || "").replace("T", " ");
+  return String(value || "").trim().replace(/^(\d{4}-\d{2}-\d{2})T/, "$1 ");
 }
 
 function setRegistrationTextFormat_(sheet) {
@@ -194,7 +194,13 @@ function scheduleCellToText_(value) {
     const serial = Number(String(value).replace(",", "."));
     if (Number.isFinite(serial) && serial > 20000) return Utilities.formatDate(new Date(Math.round((serial - 25569) * 86400000)), "UTC", "yyyy-MM-dd HH:mm");
   }
-  return normalizeSchedule_(value);
+  const text = String(value || "").trim();
+  const restored = /^(ue|hu) /.test(text) ? `T${text}` : text;
+  const parsed = new Date(restored);
+  if (!isNaN(parsed.getTime()) && !/^\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}/.test(restored)) {
+    return Utilities.formatDate(parsed, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), "yyyy-MM-dd HH:mm");
+  }
+  return normalizeSchedule_(restored);
 }
 
 function repairRegistrationSheet_(sheet, deleted) {
@@ -202,24 +208,57 @@ function repairRegistrationSheet_(sheet, deleted) {
   if (values.length <= 1) return;
   const seen = new Set();
   const duplicateRows = [];
-  const rows = [];
+  const invalidRows = [];
+  const sourceRows = [];
   let changed = false;
   values.slice(1).forEach(row => {
     const id = String(row[0] || "").trim();
     const normalized = [id, String(row[1] || ""), scheduleCellToText_(row[2]), scheduleCellToText_(row[3]), String(row[4] || "")];
-    if (!id || seen.has(id)) {
+    if (!id || !normalized[1].trim() || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(normalized[2]) || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(normalized[3]) || normalized[2] >= normalized[3]) {
       changed = true;
-      if (id) duplicateRows.push(normalized);
+      if (id) invalidRows.push(normalized);
+      return;
+    }
+    if (seen.has(id)) {
+      changed = true;
+      duplicateRows.push(normalized);
       return;
     }
     seen.add(id);
     if (normalized.some((value, column) => String(row[column] ?? "") !== value)) changed = true;
-    rows.push(normalized);
+    sourceRows.push(normalized);
+  });
+
+  const groups = new Map();
+  sourceRows.forEach(row => {
+    const root = row[0].replace(/(?:__\d{4}-\d{2}-\d{2})+$/, "");
+    const daily = root !== row[0];
+    const day = row[2].slice(0, 10);
+    const key = `${root}|${day}`;
+    const group = groups.get(key) || { root, day, daily, rows: [], name: row[1], start: row[2], end: row[3], note: row[4] };
+    group.rows.push(row);
+    if (row[2] < group.start) group.start = row[2];
+    if (row[3] > group.end) group.end = row[3];
+    if (!group.note && row[4]) group.note = row[4];
+    group.daily ||= daily;
+    groups.set(key, group);
+  });
+
+  const explodedRows = [];
+  const rows = [...groups.values()].map(group => {
+    const canonical = [group.daily ? `${group.root}__${group.day}` : group.rows[0][0], group.name, group.start, group.end, group.note];
+    if (group.rows.length > 1 || group.rows.some(row => row.some((value, column) => value !== canonical[column]))) {
+      changed = true;
+      explodedRows.push(...group.rows);
+    }
+    return canonical;
   });
   rows.sort((a, b) => a[2].localeCompare(b[2]) || a[3].localeCompare(b[3]) || a[1].localeCompare(b[1]) || a[0].localeCompare(b[0]));
   const needsRewrite = changed || !rows.every((row, index) => row[0] === String(values[index + 1][0] || ""));
   if (needsRewrite) {
     if (duplicateRows.length && deleted) logDeletedRows_(deleted, duplicateRows, "repairDuplicate");
+    if (invalidRows.length && deleted) logDeletedRows_(deleted, invalidRows, "repairInvalid");
+    if (explodedRows.length && deleted) logDeletedRows_(deleted, explodedRows, "repairExploded");
     sheet.getRange(1, 1, values.length, 5).clearContent();
     const output = [["id", "name", "start", "end", "note"]].concat(rows);
     const range = sheet.getRange(1, 1, output.length, 5);

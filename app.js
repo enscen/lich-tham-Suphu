@@ -38,7 +38,7 @@ function loadState() {
   try {
     const parsed = JSON.parse(saved);
     return {
-      registrations: Array.isArray(parsed.registrations) ? parsed.registrations : [],
+      registrations: collapseRegistrations(Array.isArray(parsed.registrations) ? parsed.registrations : []),
       people: Array.isArray(parsed.people) ? parsed.people : [],
     };
   } catch {
@@ -136,7 +136,8 @@ function dateKey(date) {
 
 function parseScheduleDate(value) {
   if (value instanceof Date) return value;
-  const raw = String(value || "").trim();
+  const text = String(value || "").trim();
+  const raw = /^(ue|hu) /.test(text) ? `T${text}` : text;
   if (!raw) return new Date(NaN);
   const normalized = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/) ;
   if (normalized) {
@@ -160,6 +161,7 @@ function normalizeRegistration(item) {
 }
 function splitRegistrationByDay(item) {
   const normalized = normalizeRegistration(item);
+  if (/(?:__\d{4}-\d{2}-\d{2})+$/.test(String(normalized.id || ""))) return [normalized];
   const dates = eachTouchedDate(normalized.start, normalized.end);
   if (dates.length <= 1) return [normalized];
   const originalStart = parseScheduleDate(normalized.start);
@@ -172,6 +174,40 @@ function splitRegistrationByDay(item) {
     const segmentEnd = originalEnd < dayEnd ? originalEnd : dayEnd;
     return { ...normalized, id: `${normalized.id}__${dateValue}`, start: toDatetimeValue(segmentStart), end: toDatetimeValue(segmentEnd) };
   });
+}
+
+function registrationRootId(id) {
+  return String(id || "").replace(/(?:__\d{4}-\d{2}-\d{2})+$/, "");
+}
+
+function collapseRegistrations(items) {
+  const groups = new Map();
+  items.flatMap(splitRegistrationByDay).forEach(item => {
+    const normalized = normalizeRegistration(item);
+    const start = parseScheduleDate(normalized.start);
+    const end = parseScheduleDate(normalized.end);
+    const sourceId = String(normalized.id || "");
+    const name = String(normalized.name || "").trim();
+    if (!sourceId || !name || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start >= end) return;
+    const root = registrationRootId(sourceId);
+    const day = dateKey(start);
+    const key = `${root}|${day}`;
+    const group = groups.get(key) || { root, day, name, note: "", start, end, sourceIds: new Set(), daily: false };
+    if (start < group.start) group.start = start;
+    if (end > group.end) group.end = end;
+    if (!group.note && normalized.note) group.note = String(normalized.note);
+    group.sourceIds.add(sourceId);
+    group.daily ||= root !== sourceId;
+    groups.set(key, group);
+  });
+  return [...groups.values()].map(group => ({
+    id: group.daily ? `${group.root}__${group.day}` : [...group.sourceIds][0],
+    name: group.name,
+    start: toDatetimeValue(group.start),
+    end: toDatetimeValue(group.end),
+    note: group.note,
+    sourceIds: [...group.sourceIds],
+  })).sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end) || a.name.localeCompare(b.name));
 }
 
 function formatDateTime(value) {
@@ -577,7 +613,8 @@ async function deleteDuplicateRegistrations(item) {
   state.registrations = state.registrations.filter((registration) => !ids.includes(registration.id));
   saveState();
   render();
-  const ok = await pushToCloud({ action: "delMany", ids, people: state.people }, false);
+  const cloudIds = beforeDelete.filter(registration => ids.includes(registration.id)).flatMap(registration => registration.sourceIds?.length ? registration.sourceIds : [registration.id]);
+  const ok = await pushToCloud({ action: "delMany", ids: cloudIds, people: state.people }, false);
   if (!ok) {
     state.registrations = beforeDelete;
     saveState();
@@ -586,7 +623,7 @@ async function deleteDuplicateRegistrations(item) {
   }
 }
 function renderLists() {
-  totalRegistered.textContent = String(registrationsInMonth().length);
+  totalRegistered.textContent = String(new Set(registrationsInMonth().map(item => registrationRootId(item.id))).size);
 }
 
 function renderTips() {}
@@ -636,13 +673,6 @@ function render() {
   renderDayDetail();
 }
 
-function mergeById(localItems, cloudItems) {
-  const map = new Map();
-  localItems.forEach((item) => item?.id && map.set(item.id, item));
-  cloudItems.forEach((item) => item?.id && map.set(item.id, item));
-  return [...map.values()].map(normalizeRegistration).sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")));
-}
-
 async function syncFromCloud() {
   if (!apiUrl) return;
   try {
@@ -654,31 +684,18 @@ async function syncFromCloud() {
     const data = await response.json();
     if (data.ok === false) throw new Error(data.error || "Apps Script trả lỗi.");
     const rawCloud = Array.isArray(data.registrations) ? data.registrations : Array.isArray(data) ? data : [];
-    const replacements = rawCloud.map((item) => ({ id: item.id, items: splitRegistrationByDay(item) })).filter((entry) => entry.items.length > 1);
-    const cloudRegistrations = rawCloud.flatMap(splitRegistrationByDay);
-    const localRegistrations = state.registrations.flatMap(splitRegistrationByDay);
+    const cloudRegistrations = collapseRegistrations(rawCloud);
     const cloudPeople = Array.isArray(data.people) ? data.people : [];
-    const cloudIds = new Set(cloudRegistrations.map((item) => item.id).filter(Boolean));
-    const missingLocal = localRegistrations.filter((item) => item.id && !cloudIds.has(item.id));
 
-    if (!cloudRegistrations.length && localRegistrations.length) {
+    if (!cloudRegistrations.length && state.registrations.length) {
       setStatus("Dữ liệu online trống, giữ dữ liệu trên máy.", "warn");
       return;
     }
 
-    state.registrations = mergeById(localRegistrations, cloudRegistrations);
+    state.registrations = cloudRegistrations;
     state.people = [...new Set([...state.people, ...cloudPeople].filter(Boolean))];
     saveState();
     render();
-    if (replacements.length) {
-      const migrated = await pushToCloud({ action: "splitMany", replacements }, false);
-      if (!migrated) return;
-    }
-    if (missingLocal.length) {
-      const repaired = await pushToCloud({ action: "addMany", items: missingLocal, people: state.people }, false);
-      if (repaired) setStatus(`Sheet thiếu ${missingLocal.length} lịch. Đã gửi bù lên Sheet.`, "warn");
-      return;
-    }
     setStatus("Đã đồng bộ online an toàn.", "good");
   } catch (error) {
     setStatus("Không tải được online. Đang dùng dữ liệu trên máy.", "bad");
@@ -736,7 +753,9 @@ async function deleteRegistration(id) {
   state.registrations = state.registrations.filter((item) => item.id !== id);
   saveState();
   render();
-  const ok = await pushToCloud({ action: "del", id, people: state.people }, false);
+  const item = beforeDelete.find(registration => registration.id === id);
+  const ids = item?.sourceIds?.length ? item.sourceIds : [id];
+  const ok = await pushToCloud({ action: "delMany", ids, people: state.people }, false);
   if (!ok) {
     state.registrations = beforeDelete;
     saveState();
