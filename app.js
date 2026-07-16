@@ -706,11 +706,20 @@ async function pushToCloud(payload, syncAfter = true) {
   if (!apiUrl) return true;
   try {
     setStatus("Đang gửi lên Sheet...");
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload),
-    });
+    let response;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        response = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(payload),
+        });
+        break;
+      } catch (error) {
+        if (attempt === 1) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    }
     const data = await response.json();
     if (!response.ok || data.ok === false) throw new Error(data.error || "Apps Script trả lỗi.");
     if ((payload.action === "del" || payload.action === "delMany") && typeof data.deleted !== "number") throw new Error("Apps Script chưa deploy bản xóa mới.");
