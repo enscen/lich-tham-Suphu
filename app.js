@@ -562,7 +562,7 @@ function renderCalendar() {
 
   for (let day = 1; day <= daysInMonth; day += 1) {
     const value = solarKey(year, month + 1, day);
-    const items = grouped[value] || [];
+    const items = mergeAdjacentDayItems(grouped[value] || [], value);
     const meta = getLunarMeta(year, month + 1, day);
     const eventText = meta.events.slice(0, 2).join(" · ");
     const cell = document.createElement("button");
@@ -639,8 +639,9 @@ function renderDayDetail() {
   const items = (grouped[selectedDetailDate] || []).sort((a, b) => a.start.localeCompare(b.start));
   const status = dayStatus(selectedDetailDate, items);
   const events = meta.events.length ? `<p class="detail-events">${meta.events.join(" · ")}</p>` : '<p class="muted">Không có ngày lễ/vía đặc biệt.</p>';
-  const schedules = items.length
-    ? items.map((item) => `<li><strong>${item.name}</strong><span>${segmentTimeRange(item, selectedDetailDate)}${item.note ? ` · ${item.note}` : ""}</span></li>`).join("")
+  const slots = mergeAdjacentDayItems(items, selectedDetailDate);
+  const schedules = slots.length
+    ? slots.map((slot) => `<li><strong>${slot.name}</strong><span>${dayTimeRange(slot.start, slot.end, selectedDetailDate)}${slot.notes.length ? ` · ${slot.notes.join(" · ")}` : ""}</span></li>`).join("")
     : '<li><span class="muted">Chưa có ai đăng ký ngày này.</span></li>';
 
   dayDetail.innerHTML = `
@@ -765,21 +766,27 @@ async function replaceRegistrations(existing, items) {
   }
 }
 
-async function deleteRegistration(id, confirmed = false) {
-  if (!confirmed && !confirm("Xóa lịch này khỏi app và Sheet?")) return;
+async function deleteRegistrations(ids, confirmed = false) {
+  const selectedIds = [...new Set(ids.filter(Boolean))];
+  if (!selectedIds.length) return;
+  if (!confirmed && !confirm(selectedIds.length > 1 ? "Xóa toàn bộ khung giờ đã ghép khỏi app và Sheet?" : "Xóa lịch này khỏi app và Sheet?")) return;
   const beforeDelete = state.registrations;
-  state.registrations = state.registrations.filter((item) => item.id !== id);
+  const targets = beforeDelete.filter((item) => selectedIds.includes(item.id));
+  state.registrations = state.registrations.filter((item) => !selectedIds.includes(item.id));
   saveState();
   render();
-  const item = beforeDelete.find(registration => registration.id === id);
-  const ids = item?.sourceIds?.length ? item.sourceIds : [id];
-  const ok = await pushToCloud({ action: "delMany", ids, people: state.people }, false);
+  const cloudIds = [...new Set(targets.flatMap(item => item.sourceIds?.length ? item.sourceIds : [item.id]))];
+  const ok = await pushToCloud({ action: "delMany", ids: cloudIds, people: state.people }, false);
   if (!ok) {
     state.registrations = beforeDelete;
     saveState();
     render();
     alert("Chưa xóa được trên Sheet, app đã khôi phục dữ liệu.");
   }
+}
+
+async function deleteRegistration(id, confirmed = false) {
+  return deleteRegistrations([id], confirmed);
 }
 $("#prevMonth").addEventListener("click", () => {
   visibleDate.setMonth(visibleDate.getMonth() - 1);
@@ -849,10 +856,11 @@ $("#syncNow")?.addEventListener("click", syncFromCloud);
 
 function dayStatus(date, items) {
   const hasConflict = items.some((item) => daySpecificConflicts(item, date).length);
+  const count = mergeAdjacentDayItems(items, date).length;
   if (hasConflict) return { label: "Có trùng", cls: "bad" };
-  if (items.length >= maxPerDay) return { label: "Đông", cls: "bad" };
-  if (items.length === 0) return { label: "Trống", cls: "warn" };
-  if (items.length <= 2) return { label: "Ít", cls: "good" };
+  if (count >= maxPerDay) return { label: "Đông", cls: "bad" };
+  if (count === 0) return { label: "Trống", cls: "warn" };
+  if (count <= 2) return { label: "Ít", cls: "good" };
   return { label: "Ổn", cls: "good" };
 }
 
@@ -883,9 +891,43 @@ function daySegmentForItem(item, dateValue) {
 function segmentTimeRange(item, dateValue) {
   const segment = daySegmentForItem(item, dateValue);
   if (!segment) return "";
-  const start = segment.start.getTime() === dayBounds(dateValue).start.getTime() ? "00:00" : `${pad2(segment.start.getHours())}:${pad2(segment.start.getMinutes())}`;
-  const end = segment.end.getTime() === dayBounds(dateValue).end.getTime() ? "24:00" : `${pad2(segment.end.getHours())}:${pad2(segment.end.getMinutes())}`;
+  return dayTimeRange(segment.start, segment.end, dateValue);
+}
+
+function dayTimeRange(segmentStart, segmentEnd, dateValue) {
+  const bounds = dayBounds(dateValue);
+  const start = segmentStart.getTime() === bounds.start.getTime() ? "00:00" : `${pad2(segmentStart.getHours())}:${pad2(segmentStart.getMinutes())}`;
+  const end = segmentEnd.getTime() === bounds.end.getTime() ? "24:00" : `${pad2(segmentEnd.getHours())}:${pad2(segmentEnd.getMinutes())}`;
   return `${start} → ${end}`;
+}
+
+function mergeAdjacentDayItems(items, dateValue) {
+  const groups = new Map();
+  items.forEach((item) => {
+    const segment = daySegmentForItem(item, dateValue);
+    if (!segment) return;
+    const key = item.name.trim().toLowerCase();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ item, ...segment });
+  });
+
+  const merged = [];
+  groups.forEach((entries) => {
+    entries.sort((a, b) => a.start - b.start || a.end - b.end);
+    const slots = [];
+    entries.forEach((entry) => {
+      const previous = slots[slots.length - 1];
+      if (previous && previous.end.getTime() === entry.start.getTime()) {
+        previous.end = entry.end;
+        previous.items.push(entry.item);
+        if (entry.item.note && !previous.notes.includes(entry.item.note)) previous.notes.push(entry.item.note);
+        return;
+      }
+      slots.push({ name: entry.item.name, start: entry.start, end: entry.end, items: [entry.item], notes: entry.item.note ? [entry.item.note] : [] });
+    });
+    merged.push(...slots);
+  });
+  return merged.sort((a, b) => a.start - b.start || a.name.localeCompare(b.name));
 }
 
 function daySpecificConflicts(item, dateValue) {
@@ -919,17 +961,18 @@ function weekLabelForMonthDay(year, monthIndex, day) {
 function renderDayMiniTable(items, value) {
   if (!items.length) return '<span class="weekly-empty">Chưa có người đăng ký</span>';
   const groups = new Map();
-  items.forEach((item) => {
-    const key = item.name.trim().toLowerCase();
-    if (!groups.has(key)) groups.set(key, { name: item.name, items: [] });
-    groups.get(key).items.push(item);
+  mergeAdjacentDayItems(items, value).forEach((slot) => {
+    const key = slot.name.trim().toLowerCase();
+    if (!groups.has(key)) groups.set(key, { name: slot.name, slots: [] });
+    groups.get(key).slots.push(slot);
   });
 
   return [...groups.values()].map((group) => {
-    const notes = [...new Set(group.items.map((item) => item.note).filter(Boolean))];
-    const slots = group.items.map((item) => {
-      const duplicateIds = duplicateIdsForItem(item);
-      return `<div class="time-chip"><span class="slot-time">${segmentTimeRange(item, value)}</span>${duplicateIds.length ? `<button class="dedupe" type="button" data-id="${item.id}">Xóa trùng</button>` : ""}<button class="delete-one" type="button" data-id="${item.id}">Xóa</button></div>`;
+    const notes = [...new Set(group.slots.flatMap((slot) => slot.notes))];
+    const slots = group.slots.map((slot) => {
+      const duplicate = slot.items.find((item) => duplicateIdsForItem(item).length);
+      const ids = slot.items.map((item) => item.id).join(",");
+      return `<div class="time-chip"><span class="slot-time">${dayTimeRange(slot.start, slot.end, value)}</span>${duplicate ? `<button class="dedupe" type="button" data-id="${duplicate.id}">Xóa trùng</button>` : ""}<button class="delete-one" type="button" data-ids="${ids}">Xóa</button></div>`;
     }).join("");
     return `<div class="weekly-person-row"><div class="weekly-person-info"><strong>${group.name}</strong>${notes.length ? `<small>${notes.join(" · ")}</small>` : ""}</div><div class="slots-cell">${slots}</div></div>`;
   }).join("");
@@ -964,11 +1007,13 @@ function renderDailyOverview() {
 
     const value = dateKey(cursor);
     const items = (grouped[value] || []).sort((a, b) => a.start.localeCompare(b.start));
+    const count = mergeAdjacentDayItems(items, value).length;
     const meta = getLunarMeta(dayYear, dayMonth + 1, day);
-    week.total += items.length;
+    week.total += count;
     week.days.push({
       date: value,
       items,
+      count,
       meta,
       monthKey: `${dayYear}-${pad2(dayMonth + 1)}`,
       monthLabel: `Tháng ${dayMonth + 1}/${dayYear}`,
@@ -984,15 +1029,15 @@ function renderDailyOverview() {
       const monthDivider = day.monthKey === lastMonth ? "" : `<div class="overview-month-divider">${day.monthLabel}</div>`;
       lastMonth = day.monthKey;
       const events = day.meta.events.join(" · ");
-      const busy = day.items.length >= maxPerDay ? " busy" : "";
-      return `${monthDivider}<section class="week-day-block${busy}"><div class="week-day-title"><div><strong>${day.weekday} · ${formatDate(day.date)}</strong><span>${lunarLabel(day.meta)}${day.items.length ? ` · ${day.items.length} lượt` : ""}</span></div>${events ? `<p>${events}</p>` : ""}</div><div class="week-day-schedules">${day.schedules}</div></section>`;
+      const busy = day.count >= maxPerDay ? " busy" : "";
+      return `${monthDivider}<section class="week-day-block${busy}"><div class="week-day-title"><div><strong>${day.weekday} · ${formatDate(day.date)}</strong><span>${lunarLabel(day.meta)}${day.count ? ` · ${day.count} lượt` : ""}</span></div>${events ? `<p>${events}</p>` : ""}</div><div class="week-day-schedules">${day.schedules}</div></section>`;
     }).join("");
     return `<article class="week-card${index % 2 ? " alternate" : ""}"><header class="week-card-header"><div><h4>${title}</h4><small>${range.replace(" - ", "–")}</small></div><span>${week.total} lượt</span></header>${days}</article>`;
   }).join("");
 
   overview.onclick = (event) => {
     const deleteButton = event.target.closest(".delete-one");
-    if (deleteButton) return deleteRegistration(deleteButton.dataset.id);
+    if (deleteButton) return deleteRegistrations((deleteButton.dataset.ids || "").split(","));
     const dedupeButton = event.target.closest(".dedupe");
     if (dedupeButton) {
       const item = state.registrations.find((registration) => registration.id === dedupeButton.dataset.id);
@@ -1019,12 +1064,13 @@ function buildZaloText() {
     }
     const value = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const items = (grouped[value] || []).sort((a, b) => a.start.localeCompare(b.start));
-    if (!items.length) continue;
+    const slots = mergeAdjacentDayItems(items, value);
+    if (!slots.length) continue;
     const hasConflict = items.some((item) => daySpecificConflicts(item, selectedDetailDate).length);
-    if (items.length >= maxPerDay) busyDays.push(formatDate(value));
+    if (slots.length >= maxPerDay) busyDays.push(formatDate(value));
     if (hasConflict) conflictDays.push(formatDate(value));
-    lines.push(`${formatDate(value)}: ${items.length} lượt${items.length >= maxPerDay ? " - ĐÔNG" : ""}${hasConflict ? " - CÓ TRÙNG" : ""}`);
-    items.forEach((item) => lines.push(`- ${item.name}: ${segmentTimeRange(item, value)}${item.note ? ` (${item.note})` : ""}`));
+    lines.push(`${formatDate(value)}: ${slots.length} lượt${slots.length >= maxPerDay ? " - ĐÔNG" : ""}${hasConflict ? " - CÓ TRÙNG" : ""}`);
+    slots.forEach((slot) => lines.push(`- ${slot.name}: ${dayTimeRange(slot.start, slot.end, value)}${slot.notes.length ? ` (${slot.notes.join(" · ")})` : ""}`));
     lines.push("");
   }
 
@@ -1035,6 +1081,14 @@ function buildZaloText() {
   }
 
   return lines.join("\n").trim();
+}
+
+function selfCheckMergeAdjacentDayItems() {
+  const merged = mergeAdjacentDayItems([
+    { id: "a", name: "A", start: "2026-07-23T00:00", end: "2026-07-23T10:00", note: "" },
+    { id: "b", name: "a", start: "2026-07-23T10:00", end: "2026-07-24T00:00", note: "" },
+  ], "2026-07-23");
+  if (merged.length !== 1 || dayTimeRange(merged[0].start, merged[0].end, "2026-07-23") !== "00:00 → 24:00") throw new Error("Adjacent merge failed");
 }
 
 async function copyZaloText() {
