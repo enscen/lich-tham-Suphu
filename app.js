@@ -946,9 +946,9 @@ function renderDailyOverview() {
   const monthEnd = localDate(year, month + 1, 0);
   const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
   const rangeStart = startOfWeek(isCurrentMonth ? today : monthStart);
-  rangeStart.setDate(rangeStart.getDate() + overviewWeekOffset * 28);
+  rangeStart.setDate(rangeStart.getDate() + overviewWeekOffset * 7);
   const rangeEnd = new Date(rangeStart);
-  rangeEnd.setDate(rangeEnd.getDate() + 27);
+  rangeEnd.setDate(rangeEnd.getDate() + 6);
   const weeks = [];
 
   for (const cursor = new Date(rangeStart); cursor <= rangeEnd; cursor.setDate(cursor.getDate() + 1)) {

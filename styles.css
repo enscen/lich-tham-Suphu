@@ -282,7 +282,7 @@ h3 { margin: 0 0 14px; }
 .week-card-header > span { flex: 0 0 auto; padding: 7px 10px; border-radius: 999px; background: rgba(255,255,255,.16); font-weight: 800; }
 .overview-month-divider { padding: 10px 16px; border-top: 4px solid #b87835; border-bottom: 1px solid #d8bfa2; background: #f4d8ae; color: #6f3618; font-size: 15px; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; }
 .week-card.alternate .overview-month-divider { border-top-color: #526d5b; background: #dce9dd; color: #344a3b; }
-.overview-controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.overview-controls { display: flex; width: 100%; margin-bottom: 12px; gap: 8px; justify-content: space-between; }
 .overview-controls button { padding: 8px 11px; font-size: 12px; }
 .week-day-block { padding: 14px 16px; background: #fffaf2; border-top: 3px solid #d8bfa2; }
 .week-day-block:nth-of-type(even) { background: #f8eddd; }
@@ -313,8 +313,7 @@ h3 { margin: 0 0 14px; }
 
 @media (max-width: 620px) {
   .overview-card { padding: 10px; }
-  .overview-controls { width: 100%; justify-content: stretch; }
-  .overview-controls button { flex: 1; }
+  .overview-controls button { min-width: 112px; }
   .daily-overview { gap: 18px; }
   .week-card-header { padding: 15px 13px; }
   .week-card-header h4 { font-size: 26px; }
