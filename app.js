@@ -251,7 +251,7 @@ function registrationsInMonth() {
 }
 
 function registrationsByDate() {
-  return registrationsInMonth().reduce((map, item) => {
+  return state.registrations.reduce((map, item) => {
     eachTouchedDate(item.start, item.end).forEach((day) => {
       map[day] = map[day] || [];
       map[day].push(item);
@@ -713,8 +713,10 @@ async function pushToCloud(payload, syncAfter = true) {
     if ((payload.action === "del" || payload.action === "delMany") && typeof data.deleted !== "number") throw new Error("Apps Script chưa deploy bản xóa mới.");
     if (payload.action === "addMany" && typeof data.added !== "number") throw new Error("Apps Script chưa deploy bản ghi theo ngày.");
     if (payload.action === "splitMany" && typeof data.migrated !== "number") throw new Error("Apps Script chưa deploy bản ghi theo ngày.");
+    if (payload.action === "replaceMany" && typeof data.replaced !== "number") throw new Error("Apps Script chưa deploy bản thay đổi lịch.");
     const message = payload.action === "del" || payload.action === "delMany" ? `Đã xóa ${data.deleted} dòng trên Sheet.`
       : payload.action === "splitMany" ? `Đã tách ${data.migrated} lịch cũ theo ngày.`
+      : payload.action === "replaceMany" ? "Đã thay đổi lịch trên Sheet."
       : payload.action === "addMany" ? `Đã lưu ${data.added} ngày lên Sheet.`
       : "Đã đồng bộ Sheet.";
     setStatus(message, "good");
@@ -741,6 +743,24 @@ async function addRegistrations(items) {
     saveState();
     render();
     alert("Chưa lưu được Sheet, app đã khôi phục dữ liệu.");
+  }
+}
+
+async function replaceRegistrations(existing, items) {
+  const root = registrationRootId(existing.id);
+  const oldItems = state.registrations.filter(item => registrationRootId(item.id) === root);
+  const oldIds = [...new Set(oldItems.flatMap(item => item.sourceIds?.length ? item.sourceIds : [item.id]))];
+  const normalizedItems = items.map(normalizeRegistration);
+  const beforeReplace = state.registrations;
+  state.registrations = state.registrations.filter(item => registrationRootId(item.id) !== root).concat(normalizedItems);
+  saveState();
+  render();
+  const ok = await pushToCloud({ action: "replaceMany", ids: oldIds, items: normalizedItems, people: state.people }, false);
+  if (!ok) {
+    state.registrations = beforeReplace;
+    saveState();
+    render();
+    alert("Chưa thay đổi được trên Sheet, app đã khôi phục dữ liệu.");
   }
 }
 
@@ -778,12 +798,25 @@ $("#registerForm").addEventListener("submit", async (event) => {
   const note = noteInput.value.trim();
   if (!name || !start || !end || !validateRange()) return;
 
-  const duplicate = state.registrations.some((item) => item.name.toLowerCase() === name.toLowerCase() && rangesOverlap(start, end, item.start, item.end));
-  if (duplicate && !confirm("Tên này đã có lịch chồng giờ. Vẫn lưu tiếp?")) return;
+  const duplicate = state.registrations.find((item) => item.name.toLowerCase() === name.toLowerCase() && rangesOverlap(start, end, item.start, item.end));
+  const items = splitRegistrationByDay({ id: crypto.randomUUID(), name, start, end, note });
+  if (duplicate) {
+    const replace = confirm(`${name} đã đăng ký ${formatDateTime(duplicate.start)}–${formatDateTime(duplicate.end)}.\n\nBấm OK để THAY ĐỔI lịch cũ.\nBấm HỦY để chọn thêm hoặc dừng.`);
+    if (replace) {
+      visibleDate = new Date(start);
+      visibleDate.setDate(1);
+      await replaceRegistrations(duplicate, items);
+      nameInput.value = "";
+      noteInput.value = "";
+      validateRange();
+      return;
+    }
+    if (!confirm("Thêm một lượt đăng ký mới dù bị trùng giờ?")) return;
+  }
 
   visibleDate = new Date(start);
   visibleDate.setDate(1);
-  await addRegistrations(splitRegistrationByDay({ id: crypto.randomUUID(), name, start, end, note }));
+  await addRegistrations(items);
   nameInput.value = "";
   noteInput.value = "";
   validateRange();
@@ -849,15 +882,24 @@ function daySpecificConflicts(item, dateValue) {
     return otherSegment && current.start < otherSegment.end && otherSegment.start < current.end;
   });
 }
-function weekLabelForMonthDay(year, monthIndex, day) {
-  const date = localDate(year, monthIndex, day);
+function startOfWeek(date) {
   const start = new Date(date);
+  start.setHours(12, 0, 0, 0);
   start.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+  return start;
+}
+
+function isoWeekNumber(date) {
+  const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  target.setUTCDate(target.getUTCDate() + 4 - (target.getUTCDay() || 7));
+  return Math.ceil((((target - Date.UTC(target.getUTCFullYear(), 0, 1)) / 86400000) + 1) / 7);
+}
+
+function weekLabelForMonthDay(year, monthIndex, day) {
+  const start = startOfWeek(localDate(year, monthIndex, day));
   const end = new Date(start);
   end.setDate(start.getDate() + 6);
-  const monthStart = localDate(year, monthIndex, 1);
-  const weekNumber = Math.floor((day + ((monthStart.getDay() + 6) % 7) - 1) / 7) + 1;
-  return `Tuần ${weekNumber}: ${formatDate(dateKey(start))} - ${formatDate(dateKey(end))}`;
+  return `Tuần ${isoWeekNumber(start)}: ${formatDate(dateKey(start))} - ${formatDate(dateKey(end))}`;
 }
 function renderDayMiniTable(items, value) {
   if (!items.length) return '<span class="weekly-empty">Chưa có người đăng ký</span>';
@@ -884,36 +926,50 @@ function renderDailyOverview() {
   const grouped = registrationsByDate();
   const year = visibleDate.getFullYear();
   const month = visibleDate.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  const monthStart = localDate(year, month, 1);
+  const monthEnd = localDate(year, month + 1, 0);
+  const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
+  const rangeStart = startOfWeek(isCurrentMonth ? today : monthStart);
+  const rangeEnd = startOfWeek(monthEnd);
+  rangeEnd.setDate(rangeEnd.getDate() + 6);
   const weeks = [];
 
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const label = weekLabelForMonthDay(year, month, day);
+  for (const cursor = new Date(rangeStart); cursor <= rangeEnd; cursor.setDate(cursor.getDate() + 1)) {
+    const dayYear = cursor.getFullYear();
+    const dayMonth = cursor.getMonth();
+    const day = cursor.getDate();
+    const label = weekLabelForMonthDay(dayYear, dayMonth, day);
     let week = weeks.find((item) => item.label === label);
     if (!week) {
       week = { label, total: 0, days: [] };
       weeks.push(week);
     }
 
-    const value = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const value = dateKey(cursor);
     const items = (grouped[value] || []).sort((a, b) => a.start.localeCompare(b.start));
-    const meta = getLunarMeta(year, month + 1, day);
+    const meta = getLunarMeta(dayYear, dayMonth + 1, day);
     week.total += items.length;
     week.days.push({
       date: value,
       items,
       meta,
-      weekday: ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][(localDate(year, month, day).getDay() + 6) % 7],
+      monthKey: `${dayYear}-${pad2(dayMonth + 1)}`,
+      monthLabel: `Tháng ${dayMonth + 1}/${dayYear}`,
+      weekday: ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][(cursor.getDay() + 6) % 7],
       schedules: renderDayMiniTable(items, value),
     });
   }
 
+  let lastMonth = "";
   overview.innerHTML = weeks.map((week, index) => {
     const [title, range = ""] = week.label.split(": ");
     const days = week.days.map((day) => {
+      const monthDivider = day.monthKey === lastMonth ? "" : `<div class="overview-month-divider">${day.monthLabel}</div>`;
+      lastMonth = day.monthKey;
       const events = day.meta.events.join(" · ");
       const busy = day.items.length >= maxPerDay ? " busy" : "";
-      return `<section class="week-day-block${busy}"><div class="week-day-title"><div><strong>${day.weekday} · ${formatDate(day.date)}</strong><span>${lunarLabel(day.meta)}${day.items.length ? ` · ${day.items.length} lượt` : ""}</span></div>${events ? `<p>${events}</p>` : ""}</div><div class="week-day-schedules">${day.schedules}</div></section>`;
+      return `${monthDivider}<section class="week-day-block${busy}"><div class="week-day-title"><div><strong>${day.weekday} · ${formatDate(day.date)}</strong><span>${lunarLabel(day.meta)}${day.items.length ? ` · ${day.items.length} lượt` : ""}</span></div>${events ? `<p>${events}</p>` : ""}</div><div class="week-day-schedules">${day.schedules}</div></section>`;
     }).join("");
     return `<article class="week-card${index % 2 ? " alternate" : ""}"><header class="week-card-header"><div><h4>${title}</h4><small>${range.replace(" - ", "–")}</small></div><span>${week.total} lượt</span></header>${days}</article>`;
   }).join("");

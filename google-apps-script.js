@@ -46,7 +46,7 @@ function doGet() {
       note: String(row[4] || ""),
     }));
     const peopleList = people.getDataRange().getValues().slice(1).map(row => String(row[0] || "")).filter(Boolean);
-    return json({ ok: true, version: "2026-07-16-delete-batch-v2", registrations, people: peopleList });
+    return json({ ok: true, version: "2026-07-17-daily-week-v1", registrations, people: peopleList });
   } catch (error) {
     return json({ ok: false, error: String(error) });
   } finally {
@@ -69,6 +69,7 @@ function doPost(e) {
     let deletedCount = 0;
     let addedCount = 0;
     let migratedCount = 0;
+    let replacedCount = 0;
 
     if (body.action === "add" && body.item) {
       const item = body.item;
@@ -123,6 +124,23 @@ function doPost(e) {
       syncPeopleFromRegistrations_(reg, people);
     }
 
+    if (body.action === "replaceMany" && Array.isArray(body.ids) && Array.isArray(body.items)) {
+      if (!body.ids.length || !body.items.length) throw new Error("Thiếu dữ liệu thay đổi lịch.");
+      deletedCount = deleteIds_(reg, body.ids.map(String), deleted, "replaceMany");
+      if (!deletedCount) throw new Error("Không tìm thấy lịch cũ để thay đổi.");
+      const ids = getIds_(reg);
+      body.items.forEach(item => {
+        const id = String(item.id || "");
+        if (id && !ids.has(id)) {
+          appendRegistration_(reg, item);
+          ids.add(id);
+          addedCount += 1;
+        }
+      });
+      replacedCount = deletedCount;
+      syncPeopleFromRegistrations_(reg, people);
+    }
+
     if (body.action === "overwriteAll" && Array.isArray(body.registrations)) {
       logDeletedRows_(deleted, reg.getDataRange().getValues().slice(1), "overwriteAll");
       reg.clear();
@@ -135,10 +153,11 @@ function doPost(e) {
       rewritePeople_(people, body.people);
     }
 
-    const shouldFormat = ["add", "addMany", "splitMany", "overwriteAll"].indexOf(body.action) >= 0;
-    repairRegistrationSheet_(reg, deleted, shouldFormat);
+    const shouldFormat = ["add", "addMany", "splitMany", "replaceMany", "del", "delMany", "overwriteAll"].indexOf(body.action) >= 0;
+    const shouldSort = ["add", "addMany", "splitMany", "replaceMany", "overwriteAll"].indexOf(body.action) >= 0;
+    repairRegistrationSheet_(reg, deleted, shouldFormat, shouldSort);
     SpreadsheetApp.flush();
-    return json({ ok: true, deleted: deletedCount, added: addedCount, migrated: migratedCount, version: "2026-07-16-delete-batch-v2" });
+    return json({ ok: true, deleted: deletedCount, added: addedCount, migrated: migratedCount, replaced: replacedCount, version: "2026-07-17-daily-week-v1" });
   } catch (error) {
     return json({ ok: false, error: String(error) });
   } finally {
@@ -164,7 +183,7 @@ function restoreDeletedRow_(deleted, rowNumber) {
   const item = { id: row[2], name: row[3], start: row[4], end: row[5], note: row[6] };
   if (item.id && !getIds_(reg).has(String(item.id))) appendRegistration_(reg, item);
   deleted.getRange(rowNumber, 8, 1, 2).setValues([[false, new Date()]]);
-  repairRegistrationSheet_(reg, deleted, true);
+  repairRegistrationSheet_(reg, deleted, true, true);
   syncPeopleFromRegistrations_(reg, people);
 }
 
@@ -201,12 +220,35 @@ function scheduleCellToText_(value) {
   return normalizeSchedule_(restored);
 }
 
-function repairRegistrationSheet_(sheet, deleted, forceFormat) {
+function scheduleTextFromMs_(value) {
+  return Utilities.formatDate(new Date(value), "UTC", "yyyy-MM-dd HH:mm");
+}
+
+function splitRegistrationRowByDay_(row) {
+  const startMatch = row[2].match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
+  const endMatch = row[3].match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
+  if (!startMatch || !endMatch) return [row];
+  const start = Date.UTC(+startMatch[1], +startMatch[2] - 1, +startMatch[3], +startMatch[4], +startMatch[5]);
+  const end = Date.UTC(+endMatch[1], +endMatch[2] - 1, +endMatch[3], +endMatch[4], +endMatch[5]);
+  const firstDay = Date.UTC(+startMatch[1], +startMatch[2] - 1, +startMatch[3]);
+  if (end <= firstDay + 86400000) return [row];
+  const root = row[0].replace(/(?:__\d{4}-\d{2}-\d{2})+$/, "");
+  const rows = [];
+  for (let day = firstDay; day < end; day += 86400000) {
+    const nextDay = day + 86400000;
+    const date = scheduleTextFromMs_(day).slice(0, 10);
+    rows.push([`${root}__${date}`, row[1], scheduleTextFromMs_(Math.max(start, day)), scheduleTextFromMs_(Math.min(end, nextDay)), row[4]]);
+  }
+  return rows;
+}
+
+function repairRegistrationSheet_(sheet, deleted, forceFormat, forceSort) {
   const values = sheet.getDataRange().getValues();
   if (values.length <= 1) return;
   const seen = new Set();
   const duplicateRows = [];
   const invalidRows = [];
+  const splitSourceRows = [];
   const sourceRows = [];
   let changed = false;
   values.slice(1).forEach(row => {
@@ -224,7 +266,12 @@ function repairRegistrationSheet_(sheet, deleted, forceFormat) {
     }
     seen.add(id);
     if (normalized.some((value, column) => String(row[column] == null ? "" : row[column]) !== value)) changed = true;
-    sourceRows.push(normalized);
+    const splitRows = splitRegistrationRowByDay_(normalized);
+    if (splitRows.length > 1) {
+      changed = true;
+      splitSourceRows.push(normalized);
+    }
+    sourceRows.push.apply(sourceRows, splitRows);
   });
 
   const groups = new Map();
@@ -251,11 +298,12 @@ function repairRegistrationSheet_(sheet, deleted, forceFormat) {
     }
     return canonical;
   });
-  rows.sort((a, b) => a[2].localeCompare(b[2]) || a[3].localeCompare(b[3]) || a[1].localeCompare(b[1]) || a[0].localeCompare(b[0]));
+  if (changed || forceSort) rows.sort((a, b) => a[2].localeCompare(b[2]) || a[3].localeCompare(b[3]) || a[1].localeCompare(b[1]) || a[0].localeCompare(b[0]));
   const needsRewrite = changed || !rows.every((row, index) => row[0] === String(values[index + 1][0] || ""));
   if (needsRewrite) {
     if (duplicateRows.length && deleted) logDeletedRows_(deleted, duplicateRows, "repairDuplicate");
     if (invalidRows.length && deleted) logDeletedRows_(deleted, invalidRows, "repairInvalid");
+    if (splitSourceRows.length && deleted) logDeletedRows_(deleted, splitSourceRows, "repairSplit");
     if (explodedRows.length && deleted) logDeletedRows_(deleted, explodedRows, "repairExploded");
     sheet.getRange(1, 1, values.length, 5).clearContent();
     const output = [["id", "name", "start", "end", "note"]].concat(rows);
@@ -264,6 +312,11 @@ function repairRegistrationSheet_(sheet, deleted, forceFormat) {
     range.setValues(output);
   }
   if (needsRewrite || forceFormat) formatRegistrationSheet_(sheet, rows);
+}
+
+function selfCheckSplitRegistrationRowByDay_() {
+  const rows = splitRegistrationRowByDay_(["x", "A", "2026-07-31 20:00", "2026-08-01 08:00", ""]);
+  if (rows.length !== 2 || rows[0][3] !== "2026-08-01 00:00" || rows[1][2] !== "2026-08-01 00:00") throw new Error("Daily split failed");
 }
 
 function dayNumber_(value) {
