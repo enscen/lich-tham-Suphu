@@ -33,10 +33,8 @@ function doGet() {
     const people = ss.getSheetByName(SHEET_PEOPLE) || ss.insertSheet(SHEET_PEOPLE);
     const deleted = ss.getSheetByName(SHEET_DELETED) || ss.insertSheet(SHEET_DELETED);
     ensureHeaders_(reg, ["id", "name", "start", "end", "note"]);
-    repairRegistrationSheet_(reg, deleted);
     ensureHeaders_(people, ["name"]);
     ensureDeletedSheet_(deleted);
-    syncPeopleFromRegistrations_(reg, people);
 
     const registrations = reg.getDataRange().getValues().slice(1).filter(row => row[0]).map(row => ({
       id: String(row[0] || ""),
@@ -46,7 +44,7 @@ function doGet() {
       note: String(row[4] || ""),
     }));
     const peopleList = people.getDataRange().getValues().slice(1).map(row => String(row[0] || "")).filter(Boolean);
-    return json({ ok: true, version: "2026-07-17-daily-week-v1", registrations, people: peopleList });
+    return json({ ok: true, version: "2026-07-17-4week-no-auto-delete", registrations, people: peopleList });
   } catch (error) {
     return json({ ok: false, error: String(error) });
   } finally {
@@ -153,11 +151,11 @@ function doPost(e) {
       rewritePeople_(people, body.people);
     }
 
-    const shouldFormat = ["add", "addMany", "splitMany", "replaceMany", "del", "delMany", "overwriteAll"].indexOf(body.action) >= 0;
-    const shouldSort = ["add", "addMany", "splitMany", "replaceMany", "overwriteAll"].indexOf(body.action) >= 0;
-    repairRegistrationSheet_(reg, deleted, shouldFormat, shouldSort);
+    if (["add", "addMany", "splitMany", "replaceMany", "del", "delMany", "overwriteAll"].indexOf(body.action) >= 0) {
+      formatRegistrationSheet_(reg, reg.getDataRange().getValues().slice(1).filter(row => row[0]));
+    }
     SpreadsheetApp.flush();
-    return json({ ok: true, deleted: deletedCount, added: addedCount, migrated: migratedCount, replaced: replacedCount, version: "2026-07-17-daily-week-v1" });
+    return json({ ok: true, deleted: deletedCount, added: addedCount, migrated: migratedCount, replaced: replacedCount, version: "2026-07-17-4week-no-auto-delete" });
   } catch (error) {
     return json({ ok: false, error: String(error) });
   } finally {
@@ -183,7 +181,7 @@ function restoreDeletedRow_(deleted, rowNumber) {
   const item = { id: row[2], name: row[3], start: row[4], end: row[5], note: row[6] };
   if (item.id && !getIds_(reg).has(String(item.id))) appendRegistration_(reg, item);
   deleted.getRange(rowNumber, 8, 1, 2).setValues([[false, new Date()]]);
-  repairRegistrationSheet_(reg, deleted, true, true);
+  formatRegistrationSheet_(reg, reg.getDataRange().getValues().slice(1).filter(row => row[0]));
   syncPeopleFromRegistrations_(reg, people);
 }
 

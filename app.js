@@ -7,6 +7,7 @@ let apiUrl = "https://script.google.com/macros/s/AKfycbzzv45buffPLa4e4tfs_Um5wjA
 let visibleDate = new Date();
 visibleDate.setDate(1);
 let selectedDetailDate = "";
+let overviewWeekOffset = 0;
 
 const $ = (selector) => document.querySelector(selector);
 const calendar = $("#calendar");
@@ -782,11 +783,23 @@ async function deleteRegistration(id, confirmed = false) {
 }
 $("#prevMonth").addEventListener("click", () => {
   visibleDate.setMonth(visibleDate.getMonth() - 1);
+  overviewWeekOffset = 0;
   render();
 });
 
 $("#nextMonth").addEventListener("click", () => {
   visibleDate.setMonth(visibleDate.getMonth() + 1);
+  overviewWeekOffset = 0;
+  render();
+});
+
+$("#prevOverviewWeeks")?.addEventListener("click", () => {
+  overviewWeekOffset -= 1;
+  render();
+});
+
+$("#nextOverviewWeeks")?.addEventListener("click", () => {
+  overviewWeekOffset += 1;
   render();
 });
 
@@ -805,6 +818,7 @@ $("#registerForm").addEventListener("submit", async (event) => {
     if (replace) {
       visibleDate = new Date(start);
       visibleDate.setDate(1);
+      overviewWeekOffset = 0;
       await replaceRegistrations(duplicate, items);
       nameInput.value = "";
       noteInput.value = "";
@@ -816,6 +830,7 @@ $("#registerForm").addEventListener("submit", async (event) => {
 
   visibleDate = new Date(start);
   visibleDate.setDate(1);
+  overviewWeekOffset = 0;
   await addRegistrations(items);
   nameInput.value = "";
   noteInput.value = "";
@@ -931,8 +946,9 @@ function renderDailyOverview() {
   const monthEnd = localDate(year, month + 1, 0);
   const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
   const rangeStart = startOfWeek(isCurrentMonth ? today : monthStart);
-  const rangeEnd = startOfWeek(monthEnd);
-  rangeEnd.setDate(rangeEnd.getDate() + 6);
+  rangeStart.setDate(rangeStart.getDate() + overviewWeekOffset * 28);
+  const rangeEnd = new Date(rangeStart);
+  rangeEnd.setDate(rangeEnd.getDate() + 27);
   const weeks = [];
 
   for (const cursor = new Date(rangeStart); cursor <= rangeEnd; cursor.setDate(cursor.getDate() + 1)) {
